@@ -12,6 +12,7 @@ class Config:
     # OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # 支持中转 API
     
     # Gemini
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

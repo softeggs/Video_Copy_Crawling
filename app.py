@@ -369,7 +369,7 @@ with tab1:
                             st.write(f"{i}. {point}")
                         
                         st.write("**详细内容**:")
-                        st.write(content['detailed_content'])
+                        st.write(content['corrected_text'])
                         
                         st.write("**金句**:")
                         for sentence in content['golden_sentences']:
