@@ -9,9 +9,10 @@
 - 🤖 **多 AI 引擎**：支持 OpenAI GPT 和 Google Gemini
 - 📝 **智能纠错**：AI 纠错模式，保持原文风格只做文字修正
 - 🔄 **灵活模式**：可选 AI 纠错或纯语音识别
-- ⏱️ **超时重试**：AI 处理超时自动重试（60s × 3 次）
+- ⏱️ **超时重试**：AI 处理超时自动重试（180s × 3 次）
 - ✨ **智能分析**：自动提取核心观点、金句、标签
 - 📊 **飞书同步**：自动同步到飞书多维表格
+- ⏰ **定时任务**：自动检查并处理飞书表格中的空白链接
 - ⚡ **高效处理**：异步并发，支持批量处理
 - 🍪 **分平台 Cookies**：独立管理各平台登录状态
 
@@ -93,7 +94,10 @@ streamlit run app.py
 
 ```bash
 # 测试 AI 配置
-python test_gemini.py  # 或 test_openai.py
+python test_ai_api.py
+
+# 查询 API 余额（中转 API）
+python check_balance.py
 
 # 测试飞书配置
 python test_feishu.py
@@ -103,26 +107,36 @@ python test_feishu.py
 
 ```
 ├── app.py                      # Streamlit Web 界面
+├── scheduler_app.py            # 定时任务独立运行脚本
+├── check_blank_links.py        # 手动检查空白链接脚本
 ├── core/                       # 核心处理模块
 │   ├── downloader.py          # 视频下载（yt-dlp）
 │   ├── audio_processor.py     # 音频优化（FFmpeg）
 │   ├── transcriber.py         # 语音识别（Whisper）
 │   ├── ai_processor.py        # AI 分析润色
 │   ├── feishu_sync.py         # 飞书同步
+│   ├── scheduler.py           # 定时任务调度器
 │   └── pipeline.py            # 处理流水线
 ├── utils/                      # 工具模块
 │   ├── config.py              # 配置管理
 │   ├── logger.py              # 日志工具
 │   ├── platform_detector.py   # 平台识别
-│   └── url_cleaner.py         # URL 清理
+│   ├── url_cleaner.py         # URL 清理
+│   └── api_balance_checker.py # API 余额查询
 ├── READM/                      # 文档目录
 │   ├── README.md              # 主文档
 │   ├── AI_PROVIDERS.md        # AI 配置指南
 │   ├── FEISHU_QUICKSTART.md   # 飞书快速开始
 │   ├── FEISHU_SETUP.md        # 飞书详细配置
-│   └── Cookies使用完整指南.md  # Cookies 配置
+│   ├── Cookies使用完整指南.md  # Cookies 配置
+│   ├── API余额查询功能说明.md  # API 余额查询
+│   ├── 定时任务使用指南.md     # 定时任务详细文档
+│   └── 定时任务快速开始.md     # 定时任务快速上手
 ├── requirements.txt            # Python 依赖
 ├── .env.example               # 环境变量模板
+├── run_scheduler.bat          # Windows 定时任务启动脚本
+├── run_check_once.bat         # Windows 手动检查脚本
+├── feishu-scheduler.service   # Linux systemd 服务配置
 └── test_feishu.py             # 飞书测试脚本
 ```
 
@@ -138,6 +152,40 @@ python test_feishu.py
 - ✅ 提取的金句和标签
 - ✅ 处理状态和时间戳
 - ✅ Markdown 笔记路径
+
+### 定时任务功能 ⏰
+
+自动检查飞书表格中的空白链接并处理：
+
+**什么是空白链接？**
+- 有原始链接，但缺少标题、作者或总结的记录
+- 典型场景：在手机上快速添加待处理的视频链接
+
+**使用方法：**
+
+1. **Web 界面手动触发**
+   - 启动应用后切换到"⏰ 定时任务"标签
+   - 点击"立即检查并处理"按钮
+
+2. **命令行手动触发**
+   ```bash
+   python check_blank_links.py
+   ```
+
+3. **后台定时运行**
+   ```bash
+   # Windows
+   python scheduler_app.py
+   # 或双击 run_scheduler.bat
+   
+   # Linux/Mac
+   python scheduler_app.py
+   # 或配置为 systemd 服务
+   ```
+
+**详细文档：**
+- 📖 [5 分钟快速开始](定时任务快速开始.md)
+- 📖 [完整使用指南](定时任务使用指南.md)
 
 ### 快速配置
 
@@ -219,10 +267,13 @@ A: OpenAI 精度更高但需付费，Gemini 免费但有配额限制。详见 [A
 A: 可以，设置 `ENABLE_AI_POLISH=false` 即可只进行语音识别。
 
 **Q: AI 处理超时怎么办？**
-A: 系统会自动重试 3 次（每次 60 秒超时），全部失败后自动跳过 AI 处理，使用原始转写文本。详见 [AI_TIMEOUT_RETRY.md](AI_TIMEOUT_RETRY.md)
+A: 系统会自动重试 3 次（每次 180 秒超时），全部失败后自动跳过 AI 处理，使用原始转写文本。详见 [AI_TIMEOUT_RETRY.md](AI_TIMEOUT_RETRY.md)
 
 **Q: AI 处理失败怎么办？**
 A: 系统会自动重试，最终失败后跳过 AI 处理，使用原始转写文本。不影响整体流程。
+
+**Q: 如何查询 API 余额？**
+A: 运行 `python check_balance.py` 查看使用情况和余额。API 失败时也会自动查询余额。详见 [API余额查询功能说明.md](API余额查询功能说明.md)
 
 ### 飞书相关
 
@@ -251,8 +302,21 @@ A: 抖音反爬虫严格，建议使用浏览器扩展下载。
 
 ## 更新日志
 
+### v2.3.0 (2024-12)
+- ✨ 新增定时任务功能
+- ✨ 自动检查飞书表格空白链接
+- ✨ 支持多种部署方式（独立运行、systemd、cron）
+- ✨ Web 界面集成定时任务管理
+- 📚 新增定时任务完整文档
+
+### v2.2.0 (2024-12)
+- ✨ 新增 API Key 余额查询功能
+- ✨ API 失败时自动查询余额诊断
+- ✨ 支持查看使用记录和 token 统计
+- 📚 新增余额查询功能文档
+
 ### v2.1.0 (2024-01)
-- ✨ 新增 AI 处理超时重试机制（60s × 3 次）
+- ✨ 新增 AI 处理超时重试机制（180s × 3 次）
 - ✨ 超时后自动跳过 AI 润色，使用原始文本
 - 🔧 优化错误处理和用户提示
 - 📚 新增超时重试机制文档

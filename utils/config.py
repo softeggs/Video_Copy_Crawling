@@ -8,6 +8,7 @@ class Config:
     # AI 配置
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")  # openai 或 gemini
     ENABLE_AI_POLISH = os.getenv("ENABLE_AI_POLISH", "true").lower() == "true"
+    AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "180"))  # AI 处理超时时间（秒）
     
     # OpenAI
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

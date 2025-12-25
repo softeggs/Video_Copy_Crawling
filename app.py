@@ -237,7 +237,7 @@ with st.sidebar:
         st.rerun()
 
 # 主界面
-tab1, tab2, tab3 = st.tabs(["📥 单个处理", "📦 批量处理", "📊 历史记录"])
+tab1, tab2, tab3, tab4 = st.tabs(["📥 单个处理", "📦 批量处理", "📊 历史记录", "⏰ 定时任务"])
 
 with tab1:
     st.header("单个视频处理")
@@ -505,6 +505,123 @@ with tab3:
                     )
     else:
         st.info("暂无历史记录")
+
+with tab4:
+    st.header("⏰ 定时任务管理")
+    
+    st.markdown("""
+    定时任务会自动检查飞书表格中的空白链接（只有链接没有详细信息的记录），
+    并自动执行完整的处理流程。
+    """)
+    
+    # 检查飞书配置
+    feishu_configured = all([
+        config.FEISHU_APP_ID,
+        config.FEISHU_APP_SECRET,
+        config.FEISHU_BITABLE_APP_TOKEN,
+        config.FEISHU_BITABLE_TABLE_ID
+    ])
+    
+    if not feishu_configured:
+        st.error("⚠️ 飞书配置不完整，无法使用定时任务功能")
+        st.info("请在 .env 文件中配置: FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_BITABLE_APP_TOKEN, FEISHU_BITABLE_TABLE_ID")
+    else:
+        st.success("✅ 飞书配置已完成")
+        
+        # 手动触发检查
+        st.subheader("🔍 手动检查")
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🚀 立即检查并处理", type="primary", disabled=st.session_state.processing):
+                st.session_state.processing = True
+                
+                with st.spinner("正在检查飞书表格..."):
+                    from core.scheduler import FeishuScheduler
+                    
+                    scheduler = FeishuScheduler()
+                    
+                    try:
+                        result = asyncio.run(scheduler.check_and_process())
+                        
+                        st.success("✅ 检查完成！")
+                        
+                        col_a, col_b, col_c, col_d = st.columns(4)
+                        with col_a:
+                            st.metric("总计", result['total'])
+                        with col_b:
+                            st.metric("成功", result['success'])
+                        with col_c:
+                            st.metric("失败", result['failed'])
+                        with col_d:
+                            st.metric("耗时", f"{result['duration']:.1f}秒")
+                        
+                        if result['total'] == 0:
+                            st.info("没有发现空白链接")
+                        elif result['failed'] > 0:
+                            st.warning(f"有 {result['failed']} 条记录处理失败，请查看日志")
+                    
+                    except Exception as e:
+                        st.error(f"❌ 检查失败: {str(e)}")
+                    
+                    finally:
+                        st.session_state.processing = False
+        
+        st.divider()
+        
+        # 定时任务说明
+        st.subheader("📋 后台定时任务")
+        
+        st.markdown("""
+        **使用方法：**
+        
+        1. **独立运行（推荐）**
+           ```bash
+           python scheduler_app.py
+           ```
+           - 作为独立进程运行
+           - 默认每 5 分钟检查一次
+           - 按 Ctrl+C 停止
+        
+        2. **手动触发**
+           ```bash
+           python check_blank_links.py
+           ```
+           - 执行一次检查和处理
+           - 适合测试或手动触发
+        
+        **空白链接判断标准：**
+        - 有原始链接
+        - 缺少标题、作者或一句话总结
+        - 处理状态不是"已完成"或"处理中"
+        
+        **处理流程：**
+        1. 检查飞书表格，找出空白链接
+        2. 更新状态为"处理中"
+        3. 执行完整处理（下载、转录、AI 分析）
+        4. 更新飞书记录的详细信息
+        5. 状态更新为"已完成"或"失败"
+        
+        **注意事项：**
+        - 定时任务会自动跳过已处理的记录
+        - 处理失败的记录会标记错误信息
+        - 建议在服务器上使用 systemd 或 supervisor 管理
+        """)
+        
+        # 查看日志
+        with st.expander("📄 查看最近日志"):
+            log_file = Path("logs/app.log")
+            if log_file.exists():
+                try:
+                    # 读取最后 50 行
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                        recent_logs = ''.join(lines[-50:])
+                    st.code(recent_logs, language='log')
+                except Exception as e:
+                    st.error(f"读取日志失败: {str(e)}")
+            else:
+                st.info("暂无日志文件")
 
 # 页脚
 st.markdown("---")

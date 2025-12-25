@@ -1,0 +1,30 @@
+# Systemd 服务配置文件
+# 用于在 Linux 服务器上运行飞书定时任务
+
+[Unit]
+Description=Feishu Blank Links Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/your/project
+Environment="PATH=/path/to/your/venv/bin"
+ExecStart=/path/to/your/venv/bin/python scheduler_app.py
+Restart=always
+RestartSec=10
+
+# 日志
+StandardOutput=append:/path/to/your/project/logs/scheduler.log
+StandardError=append:/path/to/your/project/logs/scheduler_error.log
+
+[Install]
+WantedBy=multi-user.target
+
+# 使用方法:
+# 1. 修改上面的路径为实际路径
+# 2. 复制到 /etc/systemd/system/feishu-scheduler.service
+# 3. 启用服务: sudo systemctl enable feishu-scheduler
+# 4. 启动服务: sudo systemctl start feishu-scheduler
+# 5. 查看状态: sudo systemctl status feishu-scheduler
+# 6. 查看日志: sudo journalctl -u feishu-scheduler -f

@@ -28,3 +28,5 @@ Thumbs.db
 
 # Whisper 模型缓存
 ~/.cache/whisper/
+
+test/*

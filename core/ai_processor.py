@@ -6,7 +6,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from utils.logger import logger
 from utils.config import config
+from utils.api_balance_checker import check_api_balance
 import asyncio
+import json
 
 class ProcessedContent(BaseModel):
     """结构化的处理结果"""
@@ -28,7 +30,7 @@ class AIProcessor:
         self.enable_polish = config.ENABLE_AI_POLISH
         
         # 超时和重试配置
-        self.timeout = 60  # 60 秒超时
+        self.timeout = config.AI_TIMEOUT  # 从配置文件读取超时时间
         self.max_retries = 3  # 最多重试 3 次
         
         if self.enable_polish:
@@ -81,7 +83,15 @@ class AIProcessor:
 - 保持原文的口播风格和语气
 - 保持原文的逻辑顺序和段落结构
 
-{format_instructions}"""),
+# Output Format
+请直接返回 JSON 格式，包含以下字段（不要嵌套在 properties 或其他字段中），示例格式如下（注意：直接返回数据，不要包含示例中的占位文字）：
+
+title: 视频标题
+corrected_text: 纠错后的完整文本
+core_points: 核心观点列表（数组）
+golden_sentences: 金句列表（数组）
+tags: 标签列表（数组）
+summary: 一句话总结"""),
             ("user", """视频标题：{title}
 作者：{author}
 视频标签：{tags}
@@ -89,24 +99,70 @@ class AIProcessor:
 原始文案（ASR 识别结果）：
 {raw_text}
 
-请对上述文案进行纠错优化，并提取结构化信息。""")
+请对上述文案进行纠错优化，并提取结构化信息。直接返回 JSON 格式，不要添加任何额外的说明文字。""")
         ])
         
-        chain = prompt | self.llm | self.parser
+        chain = prompt | self.llm
         
         # 提取视频标签（如果有）
         tags = metadata.get('tags', [])
         tags_str = ', '.join(tags) if tags else '无'
         
-        result = await chain.ainvoke({
+        response = await chain.ainvoke({
             "title": metadata.get('title', '未知标题'),
             "author": metadata.get('author', '未知作者'),
             "tags": tags_str,
-            "raw_text": raw_text,
-            "format_instructions": self.parser.get_format_instructions()
+            "raw_text": raw_text
         })
         
-        return result
+        # 提取响应内容
+        if hasattr(response, 'content'):
+            content = response.content
+        else:
+            content = str(response)
+        
+        logger.debug(f"AI 原始响应: {content[:500]}...")
+        
+        # 尝试解析 JSON
+        try:
+            # 清理可能的 markdown 代码块标记
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            content = content.strip()
+            
+            # 解析 JSON
+            data = json.loads(content)
+            
+            # 处理可能的嵌套结构（properties 字段）
+            if 'properties' in data and isinstance(data['properties'], dict):
+                logger.warning("检测到嵌套的 properties 字段，自动提取")
+                data = data['properties']
+            
+            # 验证必需字段
+            required_fields = ['title', 'corrected_text', 'core_points', 'golden_sentences', 'tags', 'summary']
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if missing_fields:
+                raise ValueError(f"缺少必需字段: {missing_fields}")
+            
+            # 创建 ProcessedContent 对象
+            result = ProcessedContent(**data)
+            logger.info("AI 响应解析成功")
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {str(e)}")
+            logger.error(f"原始内容: {content[:1000]}")
+            raise ValueError(f"AI 返回的不是有效的 JSON 格式: {str(e)}")
+        except Exception as e:
+            logger.error(f"数据解析失败: {str(e)}")
+            logger.error(f"解析的数据: {data if 'data' in locals() else 'N/A'}")
+            raise
     
     async def process(self, raw_text: str, metadata: Dict, progress_callback=None) -> ProcessedContent:
         """AI 处理与润色（带超时重试机制）"""
@@ -178,6 +234,25 @@ class AIProcessor:
             
         except Exception as e:
             logger.error(f"AI 处理最终失败: {str(e)}")
+            
+            # 在失败时查询 API 余额（仅对 OpenAI 中转 API）
+            if self.provider == "openai" and config.OPENAI_BASE_URL and config.OPENAI_API_KEY:
+                logger.info("正在查询 API Key 余额...")
+                try:
+                    balance_result = check_api_balance(
+                        api_key=config.OPENAI_API_KEY,
+                        base_url=config.OPENAI_BASE_URL
+                    )
+                    
+                    if balance_result and balance_result['success']:
+                        logger.info(f"API 余额: {balance_result['message']}")
+                        if progress_callback:
+                            progress_callback(f"💰 {balance_result['message']}")
+                    else:
+                        logger.warning("无法查询 API 余额")
+                except Exception as balance_error:
+                    logger.warning(f"查询余额时出错: {str(balance_error)}")
+            
             raise
     
     def _create_basic_content(self, raw_text: str, metadata: Dict) -> ProcessedContent:
