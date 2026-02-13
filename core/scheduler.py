@@ -129,8 +129,8 @@ class FeishuScheduler:
             # 创建处理流水线
             pipeline = ProcessingPipeline()
             
-            # 执行完整处理流程
-            result = await pipeline.process(url)
+            # 执行完整处理流程（跳过飞书同步，避免创建重复记录）
+            result = await pipeline.process(url, skip_feishu_sync=True)
             
             if result['success']:
                 # 处理成功，更新飞书记录
@@ -192,6 +192,7 @@ class FeishuScheduler:
                 "详细内容": content.get('corrected_text', ''),
                 "金句": "\n".join(content.get('golden_sentences', [])),
                 "标签": content.get('tags', []),
+                "视频类型": content.get('video_type', '其他'),
                 "笔记路径": markdown_path,
                 "处理状态": "已完成",
                 "处理时间": self.feishu_sync._get_current_timestamp()
@@ -224,8 +225,241 @@ class FeishuScheduler:
         except Exception as e:
             logger.error(f"更新记录详情异常: {str(e)}", exc_info=True)
     
+    async def get_raw_transcription_records(self) -> List[Dict]:
+        """获取标签中含有"原始转录"的记录
+        
+        这些记录是因为网络或 API 问题导致未进行 AI 润色的记录
+        
+        Returns:
+            原始转录记录列表
+        """
+        try:
+            logger.info("开始检查标签中含有'原始转录'的记录...")
+            
+            # 检查必需配置
+            if not all([self.feishu_sync.app_token, self.feishu_sync.table_id]):
+                logger.warning("飞书配置不完整，跳过检查")
+                return []
+            
+            from lark_oapi.api.bitable.v1 import ListAppTableRecordRequest
+            
+            # 获取所有记录
+            request = ListAppTableRecordRequest.builder() \
+                .app_token(self.feishu_sync.app_token) \
+                .table_id(self.feishu_sync.table_id) \
+                .page_size(500) \
+                .build()
+            
+            response = self.feishu_sync.client.bitable.v1.app_table_record.list(request)
+            
+            if not response.success():
+                logger.error(f"获取飞书记录失败: {response.code} - {response.msg}")
+                return []
+            
+            raw_records = []
+            
+            # 筛选含有"原始转录"标签的记录
+            for item in response.data.items:
+                fields = item.fields
+                record_id = item.record_id
+                
+                # 获取标签字段
+                tags = fields.get("标签", [])
+                if not tags:
+                    continue
+                
+                # 检查是否包含"原始转录"标签
+                if "原始转录" in tags:
+                    # 获取必要信息
+                    url_field = fields.get("原始链接")
+                    if not url_field:
+                        continue
+                    
+                    # 处理 URL 字段
+                    if isinstance(url_field, dict):
+                        url = url_field.get("link") or url_field.get("text")
+                    else:
+                        url = str(url_field)
+                    
+                    if not url or not url.strip():
+                        continue
+                    
+                    # 获取详细内容（原始转录文本）
+                    raw_text = fields.get("详细内容", "").strip()
+                    if not raw_text:
+                        logger.warning(f"记录 {record_id} 标记为原始转录但没有详细内容")
+                        continue
+                    
+                    # 获取其他信息
+                    title = fields.get("标题", "").strip()
+                    author = fields.get("作者", "").strip()
+                    status = fields.get("处理状态", "").strip()
+                    
+                    # 只处理状态为"已完成"的记录（避免处理正在处理中的记录）
+                    if status == "已完成":
+                        raw_records.append({
+                            "record_id": record_id,
+                            "url": url,
+                            "title": title,
+                            "author": author,
+                            "raw_text": raw_text,
+                            "tags": tags
+                        })
+                        logger.info(f"发现原始转录记录: {title} (ID: {record_id})")
+            
+            logger.info(f"共发现 {len(raw_records)} 条原始转录记录")
+            return raw_records
+            
+        except Exception as e:
+            logger.error(f"获取原始转录记录失败: {str(e)}", exc_info=True)
+            return []
+    
+    async def reprocess_raw_transcription(self, record: Dict) -> bool:
+        """重新处理原始转录记录（只做 AI 润色）
+        
+        Args:
+            record: 记录信息，包含 record_id、raw_text 等
+            
+        Returns:
+            是否处理成功
+        """
+        record_id = record["record_id"]
+        title = record["title"]
+        raw_text = record["raw_text"]
+        
+        try:
+            logger.info(f"开始重新处理原始转录: {title}")
+            
+            # 更新状态为"AI润色中"
+            await self.feishu_sync.update_record_status(record_id, "AI润色中")
+            
+            # 创建 AI 处理器
+            from .ai_processor import AIProcessor
+            ai_processor = AIProcessor()
+            
+            # 构建元数据
+            metadata = {
+                'title': record.get('title', '未知标题'),
+                'author': record.get('author', '未知作者'),
+                'url': record.get('url', ''),
+                'upload_date': '',
+                'tags': []
+            }
+            
+            # 只进行 AI 处理（不重新下载和转录）
+            try:
+                processed_content = await ai_processor.process(
+                    raw_text,
+                    metadata
+                )
+                
+                # 生成新的 Markdown
+                markdown = ai_processor.generate_markdown(
+                    processed_content,
+                    metadata
+                )
+                
+                # 保存 Markdown（使用原有的文件名或创建新的）
+                video_id = record_id  # 使用 record_id 作为文件名
+                output_file = config.OUTPUT_PATH / f"{video_id}_reprocessed.md"
+                output_file.write_text(markdown, encoding='utf-8')
+                logger.info(f"重新处理的笔记已保存: {output_file}")
+                
+                # 更新飞书记录
+                await self._update_record_with_ai_content(
+                    record_id,
+                    processed_content.dict(),
+                    str(output_file)
+                )
+                
+                logger.info(f"重新处理成功: {title}")
+                return True
+                
+            except Exception as ai_error:
+                # AI 处理失败
+                error_msg = f"AI 润色失败: {str(ai_error)}"
+                logger.error(f"{error_msg} - {title}")
+                
+                # 恢复状态为"已完成"（保持原始转录）
+                await self.feishu_sync.update_record_status(
+                    record_id,
+                    "已完成",
+                    error_msg
+                )
+                
+                return False
+                
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"重新处理异常: {title} - {error_msg}", exc_info=True)
+            
+            # 恢复状态为"已完成"
+            await self.feishu_sync.update_record_status(
+                record_id,
+                "已完成",
+                f"重新处理失败: {error_msg}"
+            )
+            
+            return False
+    
+    async def _update_record_with_ai_content(
+        self,
+        record_id: str,
+        content: Dict,
+        markdown_path: str
+    ):
+        """更新记录的 AI 处理内容"""
+        try:
+            from lark_oapi.api.bitable.v1 import UpdateAppTableRecordRequest, AppTableRecord
+            
+            # 获取 AI 生成的新标签
+            new_tags = content.get('tags', [])
+            
+            # 确保新标签中不包含"原始转录"
+            # （AI 生成的标签应该不会包含，但为了安全起见还是过滤一下）
+            new_tags = [tag for tag in new_tags if tag != "原始转录"]
+            
+            logger.info(f"更新标签: 移除'原始转录'，新标签: {new_tags}")
+            
+            # 构建更新字段（只更新 AI 生成的内容）
+            fields = {
+                "一句话总结": content.get('summary', ''),
+                "核心观点": "\n".join(content.get('core_points', [])),
+                "详细内容": content.get('corrected_text', ''),
+                "金句": "\n".join(content.get('golden_sentences', [])),
+                "标签": new_tags,  # 使用过滤后的新标签（已移除"原始转录"）
+                "视频类型": content.get('video_type', '其他'),
+                "笔记路径": markdown_path,
+                "处理状态": "已完成",
+                "处理时间": self.feishu_sync._get_current_timestamp()
+            }
+            
+            # 更新记录
+            request = UpdateAppTableRecordRequest.builder() \
+                .app_token(self.feishu_sync.app_token) \
+                .table_id(self.feishu_sync.table_id) \
+                .record_id(record_id) \
+                .request_body(AppTableRecord.builder()
+                    .fields(fields)
+                    .build()) \
+                .build()
+            
+            response = self.feishu_sync.client.bitable.v1.app_table_record.update(request)
+            
+            if response.success():
+                logger.info(f"AI 内容更新成功: {record_id}，已移除'原始转录'标签")
+            else:
+                logger.error(f"AI 内容更新失败: {response.code} - {response.msg}")
+                
+        except Exception as e:
+            logger.error(f"更新 AI 内容异常: {str(e)}", exc_info=True)
+    
     async def check_and_process(self) -> Dict:
-        """检查并处理所有空白记录
+        """检查并处理所有任务
+        
+        包括两个子任务：
+        1. 处理空白链接（新记录）
+        2. 重新处理原始转录记录（AI 润色）
         
         Returns:
             处理结果统计
@@ -237,47 +471,82 @@ class FeishuScheduler:
         logger.info(f"开始定时检查 - {self.last_check_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info("=" * 60)
         
-        # 获取空白记录
+        # 任务 1: 处理空白链接
+        logger.info("【任务 1】检查空白链接...")
         blank_records = await self.get_blank_records()
         
-        if not blank_records:
+        blank_success = 0
+        blank_failed = 0
+        
+        if blank_records:
+            logger.info(f"发现 {len(blank_records)} 条空白记录，开始处理...")
+            
+            for i, record in enumerate(blank_records, 1):
+                logger.info(f"空白记录处理进度: {i}/{len(blank_records)}")
+                
+                success = await self.process_blank_record(record)
+                
+                if success:
+                    blank_success += 1
+                else:
+                    blank_failed += 1
+                
+                # 避免请求过快
+                if i < len(blank_records):
+                    await asyncio.sleep(2)
+        else:
             logger.info("没有发现空白记录")
-            return {
-                "total": 0,
-                "success": 0,
-                "failed": 0,
-                "duration": time.time() - start_time
-            }
         
-        # 处理每条记录
-        success_count = 0
-        failed_count = 0
+        # 任务 2: 重新处理原始转录记录
+        logger.info("【任务 2】检查原始转录记录...")
+        raw_records = await self.get_raw_transcription_records()
         
-        for i, record in enumerate(blank_records, 1):
-            logger.info(f"处理进度: {i}/{len(blank_records)}")
+        raw_success = 0
+        raw_failed = 0
+        
+        if raw_records:
+            logger.info(f"发现 {len(raw_records)} 条原始转录记录，开始 AI 润色...")
             
-            success = await self.process_blank_record(record)
-            
-            if success:
-                success_count += 1
-            else:
-                failed_count += 1
-            
-            # 避免请求过快，添加延迟
-            if i < len(blank_records):
-                await asyncio.sleep(2)
+            for i, record in enumerate(raw_records, 1):
+                logger.info(f"原始转录处理进度: {i}/{len(raw_records)}")
+                
+                success = await self.reprocess_raw_transcription(record)
+                
+                if success:
+                    raw_success += 1
+                else:
+                    raw_failed += 1
+                
+                # 避免请求过快
+                if i < len(raw_records):
+                    await asyncio.sleep(2)
+        else:
+            logger.info("没有发现原始转录记录")
         
         duration = time.time() - start_time
         
+        # 汇总统计
+        total_count = len(blank_records) + len(raw_records)
+        total_success = blank_success + raw_success
+        total_failed = blank_failed + raw_failed
+        
         logger.info("=" * 60)
         logger.info(f"检查完成 - 耗时: {duration:.2f}秒")
-        logger.info(f"总计: {len(blank_records)} | 成功: {success_count} | 失败: {failed_count}")
+        logger.info(f"【任务 1 - 空白链接】总计: {len(blank_records)} | 成功: {blank_success} | 失败: {blank_failed}")
+        logger.info(f"【任务 2 - 原始转录】总计: {len(raw_records)} | 成功: {raw_success} | 失败: {raw_failed}")
+        logger.info(f"【总计】总计: {total_count} | 成功: {total_success} | 失败: {total_failed}")
         logger.info("=" * 60)
         
         return {
-            "total": len(blank_records),
-            "success": success_count,
-            "failed": failed_count,
+            "total": total_count,
+            "success": total_success,
+            "failed": total_failed,
+            "blank_total": len(blank_records),
+            "blank_success": blank_success,
+            "blank_failed": blank_failed,
+            "raw_total": len(raw_records),
+            "raw_success": raw_success,
+            "raw_failed": raw_failed,
             "duration": duration
         }
     

@@ -11,6 +11,8 @@
 - ✨ AI 智能润色与结构化
 - 📊 飞书多维表格自动同步
 - ⚡ 异步并发处理
+- 📱 iOS 快捷指令支持（一键添加视频链接）
+- ⏰ 定时任务自动处理
 
 ## 技术栈
 
@@ -53,19 +55,71 @@ FEISHU_BITABLE_TABLE_ID=your_table_id
 streamlit run app.py
 ```
 
+## iOS 快捷指令 ⭐ 新功能
+
+通过 iOS 快捷指令，可以快速将视频链接添加到飞书表格，等待定时任务自动处理。
+
+### ✅ 已测试通过
+
+- API 连接测试：✅ 成功
+- 添加记录测试：✅ 成功
+- 字段验证：✅ 完成
+
+### 🚀 快速开始（5-10 分钟）
+
+**新手推荐**: [超详细配置步骤](READM/IOS_详细配置步骤.md)（包含每一步的搜索关键词、参数配置、变量引用）
+
+**快速配置**: [最终配置指南](READM/IOS_SHORTCUT_FINAL_GUIDE.md)（包含实际配置和测试结果）
+
+**文档导航**: [START_HERE](READM/START_HERE.md) | [文档选择指南](READM/文档选择指南.md)
+
+### 🧪 测试工具
+
+在配置快捷指令之前，先测试 API：
+
+```bash
+# Windows 用户
+test-ios-shortcut.bat
+
+# 或直接运行
+python quick_test_ios_api.py
+
+# 检查表格字段
+python check_feishu_fields.py
+```
+
+### 📱 使用方式
+
+配置完成后，可以通过以下方式使用：
+
+- **Siri**: "嘿 Siri，添加视频到飞书"
+- **主屏幕**: 添加图标，一键启动
+- **分享菜单**: 在浏览器中直接分享链接
+
+### 📚 完整文档列表
+
+- [IOS_详细配置步骤.md](READM/IOS_详细配置步骤.md) - 超详细逐步指南 ⭐ 推荐
+- [IOS_SHORTCUT_FINAL_GUIDE.md](READM/IOS_SHORTCUT_FINAL_GUIDE.md) - 最终配置指南
+- [IOS_SHORTCUT_README.md](READM/IOS_SHORTCUT_README.md) - 功能总览
+- [IOS_SHORTCUT_QUICK_REFERENCE.md](READM/IOS_SHORTCUT_QUICK_REFERENCE.md) - 快速参考
+- [文档选择指南.md](READM/文档选择指南.md) - 帮助选择合适的文档
+
 ## 项目结构
 
 ```
 ├── app.py                 # Streamlit 主界面
+├── scheduler_app.py       # 定时任务界面
 ├── core/
 │   ├── downloader.py     # 视频下载模块
 │   ├── audio_processor.py # 音频处理模块
 │   ├── transcriber.py    # 语音识别模块
 │   ├── ai_processor.py   # AI 润色模块
-│   └── feishu_sync.py    # 飞书同步模块
+│   ├── feishu_sync.py    # 飞书同步模块
+│   └── scheduler.py      # 定时任务模块
 ├── utils/
 │   ├── config.py         # 配置管理
 │   └── logger.py         # 日志工具
+├── test_add_url_to_feishu.py  # iOS 快捷指令测试工具
 ├── requirements.txt
 └── .env.example
 ```

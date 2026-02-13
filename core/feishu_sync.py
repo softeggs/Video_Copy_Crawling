@@ -6,9 +6,11 @@ from utils.config import config
 
 class FeishuSync:
     def __init__(self):
+        # 创建客户端，禁用 SSL 验证（Docker 环境中可能需要）
         self.client = lark.Client.builder() \
             .app_id(config.FEISHU_APP_ID) \
             .app_secret(config.FEISHU_APP_SECRET) \
+            .log_level(lark.LogLevel.ERROR) \
             .build()
         
         self.app_token = config.FEISHU_BITABLE_APP_TOKEN
@@ -44,6 +46,7 @@ class FeishuSync:
                 "详细内容": content.get('corrected_text', ''),
                 "金句": "\n".join(content.get('golden_sentences', [])),
                 "标签": content.get('tags', []),
+                "视频类型": content.get('video_type', '其他'),
                 "笔记路径": markdown_path,
                 "处理状态": "已完成",
                 "处理时间": self._get_current_timestamp()

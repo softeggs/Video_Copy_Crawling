@@ -2,6 +2,7 @@ import streamlit as st
 import asyncio
 from pathlib import Path
 from core.pipeline import ProcessingPipeline
+from core.background_scheduler import background_scheduler
 from utils.config import config
 
 # 页面配置
@@ -14,6 +15,27 @@ st.set_page_config(
 # 初始化
 if 'processing' not in st.session_state:
     st.session_state.processing = False
+
+# 自动启动定时任务（仅在首次加载时）
+if 'scheduler_auto_started' not in st.session_state:
+    st.session_state.scheduler_auto_started = False
+    
+    # 检查是否配置了自动启动
+    if config.AUTO_START_SCHEDULER:
+        # 检查飞书配置是否完整
+        feishu_configured = all([
+            config.FEISHU_APP_ID,
+            config.FEISHU_APP_SECRET,
+            config.FEISHU_BITABLE_APP_TOKEN,
+            config.FEISHU_BITABLE_TABLE_ID
+        ])
+        
+        if feishu_configured:
+            # 自动启动定时任务
+            result = background_scheduler.start(check_interval=config.SCHEDULER_CHECK_INTERVAL)
+            if result['success']:
+                st.session_state.scheduler_auto_started = True
+                st.toast(f"✅ 定时任务已自动启动（每 {config.SCHEDULER_CHECK_INTERVAL // 60} 分钟检查一次）", icon="✅")
 
 # 标题
 st.title("🎬 短视频内容情报提取系统")
@@ -528,85 +550,252 @@ with tab4:
     else:
         st.success("✅ 飞书配置已完成")
         
-        # 手动触发检查
-        st.subheader("🔍 手动检查")
+        # 获取定时任务状态
+        status = background_scheduler.get_status()
         
-        col1, col2 = st.columns([1, 3])
+        # 后台定时任务控制
+        st.subheader("🤖 后台定时任务")
+        
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
         with col1:
-            if st.button("🚀 立即检查并处理", type="primary", disabled=st.session_state.processing):
-                st.session_state.processing = True
-                
-                with st.spinner("正在检查飞书表格..."):
-                    from core.scheduler import FeishuScheduler
+            if status['is_running']:
+                st.success("🟢 运行中")
+            else:
+                st.info("⚪ 未运行")
+        
+        with col2:
+            if status['is_running']:
+                st.metric("检查间隔", f"{status['check_interval_minutes']} 分钟")
+            else:
+                st.metric("检查间隔", "-")
+        
+        with col3:
+            if status['last_check_time']:
+                st.metric("上次检查", status['last_check_time'])
+            else:
+                st.metric("上次检查", "从未运行")
+        
+        # 显示上次结果
+        if status['last_result']:
+            result = status['last_result']
+            
+            # 总体统计
+            st.subheader("📊 处理统计")
+            col_a, col_b, col_c, col_d = st.columns(4)
+            with col_a:
+                st.metric("总计", result['total'])
+            with col_b:
+                st.metric("成功", result['success'])
+            with col_c:
+                st.metric("失败", result['failed'])
+            with col_d:
+                st.metric("耗时", f"{result['duration']:.1f}秒")
+            
+            # 子任务详情
+            if result.get('blank_total', 0) > 0 or result.get('raw_total', 0) > 0:
+                with st.expander("📋 详细统计", expanded=False):
+                    col1, col2 = st.columns(2)
                     
-                    scheduler = FeishuScheduler()
+                    with col1:
+                        st.markdown("**任务 1: 空白链接**")
+                        st.write(f"- 总计: {result.get('blank_total', 0)} 条")
+                        st.write(f"- 成功: {result.get('blank_success', 0)} 条")
+                        st.write(f"- 失败: {result.get('blank_failed', 0)} 条")
                     
-                    try:
-                        result = asyncio.run(scheduler.check_and_process())
-                        
-                        st.success("✅ 检查完成！")
-                        
-                        col_a, col_b, col_c, col_d = st.columns(4)
-                        with col_a:
-                            st.metric("总计", result['total'])
-                        with col_b:
-                            st.metric("成功", result['success'])
-                        with col_c:
-                            st.metric("失败", result['failed'])
-                        with col_d:
-                            st.metric("耗时", f"{result['duration']:.1f}秒")
-                        
-                        if result['total'] == 0:
-                            st.info("没有发现空白链接")
-                        elif result['failed'] > 0:
-                            st.warning(f"有 {result['failed']} 条记录处理失败，请查看日志")
-                    
-                    except Exception as e:
-                        st.error(f"❌ 检查失败: {str(e)}")
-                    
-                    finally:
-                        st.session_state.processing = False
+                    with col2:
+                        st.markdown("**任务 2: 原始转录 AI 润色**")
+                        st.write(f"- 总计: {result.get('raw_total', 0)} 条")
+                        st.write(f"- 成功: {result.get('raw_success', 0)} 条")
+                        st.write(f"- 失败: {result.get('raw_failed', 0)} 条")
         
         st.divider()
         
-        # 定时任务说明
-        st.subheader("📋 后台定时任务")
+        # 控制按钮
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
         
-        st.markdown("""
-        **使用方法：**
+        with col_btn1:
+            if not status['is_running']:
+                # 检查间隔选择
+                interval_options = {
+                    "1 分钟": 60,
+                    "5 分钟": 300,
+                    "10 分钟": 600,
+                    "30 分钟": 1800,
+                    "1 小时": 3600
+                }
+                selected_interval = st.selectbox(
+                    "检查间隔",
+                    list(interval_options.keys()),
+                    index=1  # 默认 5 分钟
+                )
+                
+                if st.button("▶️ 启动定时任务", type="primary", use_container_width=True):
+                    interval_seconds = interval_options[selected_interval]
+                    result = background_scheduler.start(check_interval=interval_seconds)
+                    
+                    if result['success']:
+                        st.success(result['message'])
+                        st.rerun()
+                    else:
+                        st.error(result['message'])
+            else:
+                if st.button("⏹️ 停止定时任务", type="secondary", use_container_width=True):
+                    result = background_scheduler.stop()
+                    
+                    if result['success']:
+                        st.success(result['message'])
+                        st.rerun()
+                    else:
+                        st.error(result['message'])
         
-        1. **独立运行（推荐）**
-           ```bash
-           python scheduler_app.py
-           ```
-           - 作为独立进程运行
-           - 默认每 5 分钟检查一次
-           - 按 Ctrl+C 停止
+        with col_btn2:
+            if st.button("🔄 立即执行一次", disabled=st.session_state.processing, use_container_width=True):
+                st.session_state.processing = True
+                
+                with st.spinner("正在检查飞书表格..."):
+                    result = background_scheduler.execute_once()
+                    
+                    if result['success']:
+                        check_result = result['result']
+                        st.success("✅ 检查完成！")
+                        
+                        # 总体统计
+                        col_a, col_b, col_c, col_d = st.columns(4)
+                        with col_a:
+                            st.metric("总计", check_result['total'])
+                        with col_b:
+                            st.metric("成功", check_result['success'])
+                        with col_c:
+                            st.metric("失败", check_result['failed'])
+                        with col_d:
+                            st.metric("耗时", f"{check_result['duration']:.1f}秒")
+                        
+                        # 子任务详情
+                        if check_result.get('blank_total', 0) > 0 or check_result.get('raw_total', 0) > 0:
+                            st.markdown("**详细统计：**")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.info(f"**空白链接**: {check_result.get('blank_total', 0)} 条 | "
+                                       f"成功 {check_result.get('blank_success', 0)} | "
+                                       f"失败 {check_result.get('blank_failed', 0)}")
+                            
+                            with col2:
+                                st.info(f"**原始转录润色**: {check_result.get('raw_total', 0)} 条 | "
+                                       f"成功 {check_result.get('raw_success', 0)} | "
+                                       f"失败 {check_result.get('raw_failed', 0)}")
+                        
+                        if check_result['total'] == 0:
+                            st.info("没有发现需要处理的记录")
+                        elif check_result['failed'] > 0:
+                            st.warning(f"有 {check_result['failed']} 条记录处理失败，请查看日志")
+                    else:
+                        st.error(f"❌ 检查失败: {result.get('message', '未知错误')}")
+                    
+                    st.session_state.processing = False
+                    st.rerun()
         
-        2. **手动触发**
-           ```bash
-           python check_blank_links.py
-           ```
-           - 执行一次检查和处理
-           - 适合测试或手动触发
+        with col_btn3:
+            if st.button("🔄 刷新状态", use_container_width=True):
+                st.rerun()
         
-        **空白链接判断标准：**
-        - 有原始链接
-        - 缺少标题、作者或一句话总结
-        - 处理状态不是"已完成"或"处理中"
+        st.divider()
         
-        **处理流程：**
-        1. 检查飞书表格，找出空白链接
-        2. 更新状态为"处理中"
-        3. 执行完整处理（下载、转录、AI 分析）
-        4. 更新飞书记录的详细信息
-        5. 状态更新为"已完成"或"失败"
+        # 使用说明
+        st.subheader("📖 使用说明")
         
-        **注意事项：**
-        - 定时任务会自动跳过已处理的记录
-        - 处理失败的记录会标记错误信息
-        - 建议在服务器上使用 systemd 或 supervisor 管理
-        """)
+        with st.expander("💡 后台定时任务说明"):
+            st.markdown("""
+            **后台定时任务功能：**
+            
+            - ✅ 在 Streamlit 应用中运行，无需单独启动脚本
+            - ✅ 自动检查飞书表格中的空白链接
+            - ✅ 自动重新处理"原始转录"记录（AI 润色）
+            - ✅ 按设定的间隔自动执行处理
+            - ✅ 可随时启动/停止
+            - ✅ 实时查看运行状态和结果
+            
+            **两个子任务：**
+            
+            1. **空白链接处理**
+               - 检测：有链接但缺少标题/作者/总结
+               - 处理：完整流程（下载、转录、AI 分析）
+            
+            2. **原始转录 AI 润色**
+               - 检测：标签中含有"原始转录"
+               - 处理：只进行 AI 润色（不重新下载和转录）
+               - 原因：网络或 API 问题导致首次处理时未进行 AI 润色
+            
+            **使用步骤：**
+            
+            1. 选择检查间隔（1 分钟 ~ 1 小时）
+            2. 点击"启动定时任务"
+            3. 任务会在后台自动运行
+            4. 可以点击"立即执行一次"手动触发
+            5. 需要停止时点击"停止定时任务"
+            
+            **注意事项：**
+            
+            - 后台任务会随 Streamlit 应用一起运行
+            - 关闭浏览器不影响后台任务
+            - 停止 Streamlit 应用会自动停止后台任务
+            - 建议根据实际需求选择合适的检查间隔
+            
+            **推荐配置：**
+            
+            - 测试环境：1-5 分钟
+            - 个人使用：5-10 分钟
+            - 团队使用：10-30 分钟
+            - 低频使用：30-60 分钟
+            """)
+        
+        with st.expander("🔧 独立运行方式（可选）"):
+            st.markdown("""
+            如果需要独立运行定时任务（不依赖 Streamlit），可以使用：
+            
+            **方法 1: 独立脚本**
+            ```bash
+            python scheduler_app.py
+            ```
+            
+            **方法 2: 手动触发**
+            ```bash
+            python check_blank_links.py
+            ```
+            
+            **方法 3: 系统服务（Linux）**
+            ```bash
+            sudo systemctl start feishu-scheduler
+            ```
+            
+            详细说明请查看：`READM/定时任务使用指南.md`
+            """)
+        
+        with st.expander("📊 空白链接判断标准"):
+            st.markdown("""
+            系统会自动识别以下记录为"空白链接"：
+            
+            ✅ **必须满足：**
+            - 有原始链接字段
+            
+            ❌ **缺少以下任一项：**
+            - 标题
+            - 作者
+            - 一句话总结
+            
+            ❌ **处理状态不是：**
+            - "已完成"
+            - "处理中"
+            
+            **处理流程：**
+            1. 扫描飞书表格
+            2. 识别空白链接
+            3. 更新状态为"处理中"
+            4. 下载视频 → 提取音频 → 语音识别 → AI 分析
+            5. 更新飞书记录（标题、作者、总结等）
+            6. 状态更新为"已完成"或"失败"
+            """)
         
         # 查看日志
         with st.expander("📄 查看最近日志"):

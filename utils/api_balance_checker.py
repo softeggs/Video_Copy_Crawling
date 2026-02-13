@@ -404,3 +404,124 @@ def check_api_balance(api_key: str, base_url: str = "https://api2.qiandao.mom") 
     """
     checker = APIBalanceChecker(base_url)
     return checker.check_balance(api_key)
+
+
+class KimiBalanceChecker:
+    """Kimi (Moonshot AI) API 余额检查器"""
+    
+    BASE_URL = "https://api.moonshot.cn/v1"
+    
+    def __init__(self, api_key: str):
+        """初始化 Kimi 余额检查器
+        
+        Args:
+            api_key: Kimi API Key
+        """
+        self.api_key = api_key
+    
+    def check_balance(self) -> Optional[Dict]:
+        """查询 Kimi API 余额
+        
+        Returns:
+            余额信息字典，包含：
+            - available_balance: 可用余额（人民币）
+            - voucher_balance: 代金券余额
+            - cash_balance: 现金余额
+        """
+        if not self.api_key:
+            logger.warning("Kimi API Key 为空，无法查询余额")
+            return {
+                'success': False,
+                'message': 'API Key 未配置'
+            }
+        
+        try:
+            url = f"{self.BASE_URL}/users/me/balance"
+            
+            logger.info(f"查询 Kimi 余额: {self.api_key[:15]}...")
+            
+            response = requests.get(
+                url,
+                timeout=10,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json"
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Kimi 余额查询成功: {data}")
+                
+                # 解析返回数据
+                if data.get('code') == 0 and data.get('status'):
+                    balance_data = data.get('data', {})
+                    available = balance_data.get('available_balance', 0)
+                    voucher = balance_data.get('voucher_balance', 0)
+                    cash = balance_data.get('cash_balance', 0)
+                    
+                    return {
+                        'success': True,
+                        'available_balance': available,
+                        'voucher_balance': voucher,
+                        'cash_balance': cash,
+                        'message': f"可用余额: ¥{available:.2f} (代金券: ¥{voucher:.2f}, 现金: ¥{cash:.2f})"
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'message': f"查询失败: {data.get('message', '未知错误')}"
+                    }
+            else:
+                logger.error(f"Kimi 余额查询失败，状态码: {response.status_code}")
+                return {
+                    'success': False,
+                    'message': f"查询失败（状态码: {response.status_code}）"
+                }
+                
+        except Exception as e:
+            logger.error(f"Kimi 余额查询异常: {str(e)}")
+            return {
+                'success': False,
+                'message': f"查询异常: {str(e)}"
+            }
+    
+    def print_balance(self) -> None:
+        """打印 Kimi API 余额信息（用于命令行）"""
+        print("\n" + "=" * 50)
+        print("🌙 Kimi (Moonshot AI) 余额查询")
+        print("=" * 50)
+        
+        result = self.check_balance()
+        
+        if result and result['success']:
+            print(f"\n✅ {result['message']}")
+            print(f"\n💰 余额详情:")
+            print(f"  可用余额: ¥{result['available_balance']:.2f}")
+            print(f"  代金券余额: ¥{result['voucher_balance']:.2f}")
+            print(f"  现金余额: ¥{result['cash_balance']:.2f}")
+            
+            # 余额警告
+            available = result['available_balance']
+            if available <= 0:
+                print(f"\n  ⚠️  警告: 余额已用尽，请及时充值！")
+            elif available < 5:
+                print(f"\n  ⚠️  提示: 余额较低，建议关注")
+        else:
+            message = result['message'] if result else "查询失败"
+            print(f"\n❌ {message}")
+        
+        print("=" * 50 + "\n")
+
+
+def check_kimi_balance(api_key: str) -> Optional[Dict]:
+    """快速查询 Kimi API 余额
+    
+    Args:
+        api_key: Kimi API Key
+        
+    Returns:
+        余额信息字典
+    """
+    checker = KimiBalanceChecker(api_key)
+    return checker.check_balance()

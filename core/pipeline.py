@@ -36,8 +36,14 @@ class ProcessingPipeline:
         if enable_ai_polish is not None:
             self.ai_processor.enable_polish = enable_ai_polish
     
-    async def process(self, url: str, progress_callback: Callable = None) -> Dict:
-        """执行完整的处理流程"""
+    async def process(self, url: str, progress_callback: Callable = None, skip_feishu_sync: bool = False) -> Dict:
+        """执行完整的处理流程
+        
+        Args:
+            url: 视频链接
+            progress_callback: 进度回调函数
+            skip_feishu_sync: 是否跳过飞书同步（创建新记录），用于定时任务模式
+        """
         try:
             # 1. 下载视频
             self._update_progress(progress_callback, "📥 下载视频中...")
@@ -95,13 +101,17 @@ class ProcessingPipeline:
             output_file.write_text(markdown, encoding='utf-8')
             logger.info(f"笔记已保存: {output_file}")
             
-            # 6. 同步到飞书
-            self._update_progress(progress_callback, "☁️ 同步到飞书...")
-            sync_success = await self.feishu_sync.sync_to_bitable(
-                processed_content.dict(),
-                metadata,
-                str(output_file)
-            )
+            # 6. 同步到飞书（仅在非定时任务模式下创建新记录）
+            sync_success = False
+            if not skip_feishu_sync:
+                self._update_progress(progress_callback, "☁️ 同步到飞书...")
+                sync_success = await self.feishu_sync.sync_to_bitable(
+                    processed_content.dict(),
+                    metadata,
+                    str(output_file)
+                )
+            else:
+                logger.info("跳过飞书同步（定时任务模式，将由调度器更新记录）")
             
             # 7. 清理临时文件（保留原始下载文件，只删除优化后的临时文件）
             # 只删除 _optimized.wav 文件，保留原始下载的音频
