@@ -83,12 +83,14 @@ class FeishuSync:
             logger.error(f"飞书同步异常: {str(e)}", exc_info=True)
             return False
     
-    async def update_record_status(self, record_id: str, status: str, error_msg: str = None):
+    async def update_record_status(self, record_id: str, status: str, error_msg: str = None, tags: list[str] = None):
         """更新记录状态"""
         try:
             fields = {"处理状态": status}
             if error_msg:
                 fields["错误信息"] = error_msg
+            if tags is not None:
+                fields["标签"] = tags
             
             request = UpdateAppTableRecordRequest.builder() \
                 .app_token(self.app_token) \
@@ -106,6 +108,21 @@ class FeishuSync:
             logger.error(f"更新记录状态失败: {str(e)}")
             return False
     
+    async def delete_record(self, record_id: str) -> bool:
+        """?????????????"""
+        try:
+            request = DeleteAppTableRecordRequest.builder() \
+                .app_token(self.app_token) \
+                .table_id(self.table_id) \
+                .record_id(record_id) \
+                .build()
+
+            response = self.client.bitable.v1.app_table_record.delete(request)
+            return response.success()
+        except Exception as e:
+            logger.error(f"????????: {str(e)}")
+            return False
+
     @staticmethod
     def _get_current_timestamp() -> int:
         """获取当前时间戳（毫秒）"""

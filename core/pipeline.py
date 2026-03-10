@@ -63,6 +63,7 @@ class ProcessingPipeline:
             )
             
             # 4. AI 处理（如果启用）
+            ai_polish_succeeded = False
             if self.ai_processor.enable_polish:
                 self._update_progress(progress_callback, "🤖 AI 分析与润色...")
                 try:
@@ -71,6 +72,7 @@ class ProcessingPipeline:
                         metadata,
                         progress_callback
                     )
+                    ai_polish_succeeded = True
                 except Exception as ai_error:
                     # AI 处理失败，自动跳过并使用原始文本
                     logger.warning(f"AI 处理失败，跳过 AI 润色: {str(ai_error)}")
@@ -105,8 +107,14 @@ class ProcessingPipeline:
             sync_success = False
             if not skip_feishu_sync:
                 self._update_progress(progress_callback, "☁️ 同步到飞书...")
+                content_for_sync = processed_content.dict()
+                if self.ai_processor.enable_polish:
+                    content_for_sync["tags"] = self.ai_processor.build_upload_tags(
+                        content_for_sync.get("tags", []),
+                        ai_polish_succeeded
+                    )
                 sync_success = await self.feishu_sync.sync_to_bitable(
-                    processed_content.dict(),
+                    content_for_sync,
                     metadata,
                     str(output_file)
                 )

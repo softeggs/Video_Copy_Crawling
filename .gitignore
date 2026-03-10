@@ -33,6 +33,3 @@ Thumbs.db
 .dockerignore
 
 test/*
-
-# 调试文件
-*.ps1

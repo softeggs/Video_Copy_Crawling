@@ -1,4 +1,4 @@
-"""定时任务调度器 - 自动检查并处理飞书表格中的空白链接"""
+﻿"""定时任务调度器 - 自动检查并处理飞书表格中的空白链接"""
 
 import asyncio
 import time
@@ -25,6 +25,40 @@ class FeishuScheduler:
         self.check_interval = check_interval
         self.is_running = False
         self.last_check_time = None
+
+    RETRY_COUNT_PATTERN = r"AI_RETRY_COUNT:\s*(\d+)"
+    MAX_AI_RETRY_COUNT = 10
+
+    @staticmethod
+    def _field_has_value(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, dict):
+            return any(FeishuScheduler._field_has_value(item) for item in value.values())
+        if isinstance(value, list):
+            return any(FeishuScheduler._field_has_value(item) for item in value)
+        return True
+
+    def _is_pure_empty_row(self, fields: Dict) -> bool:
+        return not any(self._field_has_value(value) for value in fields.values())
+
+    @staticmethod
+    def _extract_retry_count(error_msg: str) -> int:
+        import re
+
+        if not error_msg:
+            return 0
+        match = re.search(FeishuScheduler.RETRY_COUNT_PATTERN, error_msg)
+        return int(match.group(1)) if match else 0
+
+    def _append_retry_count(self, error_msg: str, retry_count: int) -> str:
+        import re
+
+        base_error = (error_msg or "AI polish failed").strip()
+        base_error = re.sub(r"\s*AI_RETRY_COUNT:\s*\d+\s*$", "", base_error).strip()
+        return f"{base_error} AI_RETRY_COUNT: {retry_count}"
         
     async def get_blank_records(self) -> List[Dict]:
         """获取飞书表格中的空白链接记录
@@ -63,6 +97,14 @@ class FeishuScheduler:
             for item in response.data.items:
                 fields = item.fields
                 record_id = item.record_id
+
+                if self._is_pure_empty_row(fields):
+                    deleted = await self.feishu_sync.delete_record(record_id)
+                    if deleted:
+                        logger.info(f"已自动删除纯空行记录: {record_id}")
+                    else:
+                        logger.warning(f"纯空行删除失败: {record_id}")
+                    continue
                 
                 # 提取原始链接
                 url_field = fields.get("原始链接")
@@ -290,22 +332,29 @@ class FeishuScheduler:
                         logger.warning(f"记录 {record_id} 标记为原始转录但没有详细内容")
                         continue
                     
-                    # 获取其他信息
-                    title = fields.get("标题", "").strip()
-                    author = fields.get("作者", "").strip()
+                    # ??????
+                    title = fields.get("??", "").strip()
+                    author = fields.get("??", "").strip()
                     status = fields.get("处理状态", "").strip()
-                    
-                    # 只处理状态为"已完成"的记录（避免处理正在处理中的记录）
-                    if status == "已完成":
+                    error_msg = fields.get("错误信息", "").strip()
+                    retry_count = self._extract_retry_count(error_msg)
+
+                    if retry_count >= self.MAX_AI_RETRY_COUNT:
+                        logger.info(f"跳过记录 {record_id}，AI 失败次数已达到上限 {retry_count}")
+                        continue
+
+                    if status != "处理中":
                         raw_records.append({
                             "record_id": record_id,
                             "url": url,
                             "title": title,
                             "author": author,
                             "raw_text": raw_text,
-                            "tags": tags
+                            "tags": tags,
+                            "error_msg": error_msg,
+                            "retry_count": retry_count,
                         })
-                        logger.info(f"发现原始转录记录: {title} (ID: {record_id})")
+                        logger.info(f"????????: {title} (ID: {record_id})")
             
             logger.info(f"共发现 {len(raw_records)} 条原始转录记录")
             return raw_records
@@ -326,6 +375,7 @@ class FeishuScheduler:
         record_id = record["record_id"]
         title = record["title"]
         raw_text = record["raw_text"]
+        retry_count = record.get("retry_count", 0)
         
         try:
             logger.info(f"开始重新处理原始转录: {title}")
@@ -366,9 +416,15 @@ class FeishuScheduler:
                 logger.info(f"重新处理的笔记已保存: {output_file}")
                 
                 # 更新飞书记录
+                # ??????
+                content_for_update = processed_content.dict()
+                content_for_update["tags"] = ai_processor.build_upload_tags(
+                    content_for_update.get("tags", []),
+                    True
+                )
                 await self._update_record_with_ai_content(
                     record_id,
-                    processed_content.dict(),
+                    content_for_update,
                     str(output_file)
                 )
                 
@@ -377,7 +433,8 @@ class FeishuScheduler:
                 
             except Exception as ai_error:
                 # AI 处理失败
-                error_msg = f"AI 润色失败: {str(ai_error)}"
+                next_retry_count = retry_count + 1
+                error_msg = self._append_retry_count(f"AI polish failed: {str(ai_error)}", next_retry_count)
                 logger.error(f"{error_msg} - {title}")
                 
                 # 恢复状态为"已完成"（保持原始转录）
@@ -415,9 +472,11 @@ class FeishuScheduler:
             # 获取 AI 生成的新标签
             new_tags = content.get('tags', [])
             
-            # 确保新标签中不包含"原始转录"
-            # （AI 生成的标签应该不会包含，但为了安全起见还是过滤一下）
-            new_tags = [tag for tag in new_tags if tag != "原始转录"]
+            # 成功后移除重试相关标签
+            new_tags = [
+                tag for tag in new_tags
+                if tag not in ["原始转录", "未进行AI润色标签"]
+            ]
             
             logger.info(f"更新标签: 移除'原始转录'，新标签: {new_tags}")
             
