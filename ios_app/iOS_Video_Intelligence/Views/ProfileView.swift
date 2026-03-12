@@ -2,65 +2,63 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthManager
-    
+
     var body: some View {
         NavigationView {
             List {
-                // User Info Section
                 Section {
                     HStack(spacing: 16) {
                         Image(systemName: "person.circle.fill")
                             .resizable()
                             .frame(width: 60, height: 60)
                             .foregroundColor(Color(hex: "5E5CE6"))
-                        
+
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(authManager.currentUser?.displayName ?? "User")
+                            Text(authManager.currentUser?.displayName ?? "用户")
                                 .font(.headline)
-                            Text(authManager.currentUser?.username ?? "username")
+                            Text(authManager.currentUser?.username ?? "未登录用户")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                         }
                     }
                     .padding(.vertical, 8)
                 }
-                
-                // Statistics Section
-                Section(header: Text("Statistics")) {
+
+                Section(header: Text("统计概览")) {
                     HStack {
                         Spacer()
                         VStack {
                             Text("156")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                            Text("Total")
+                            Text("累计")
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
-                        
+
                         Spacer()
-                        try! Divider()
+                        Divider()
                         Spacer()
-                        
+
                         VStack {
                             Text("12")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                            Text("Today")
+                            Text("今日")
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
-                        
+
                         Spacer()
-                        try! Divider()
+                        Divider()
                         Spacer()
-                        
+
                         VStack {
                             Text("3")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color(hex: "FAAD14"))
-                            Text("Pending")
+                            Text("待处理")
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         }
@@ -68,21 +66,20 @@ struct ProfileView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                
-                // Shortcut Section
-                Section(header: Text("Efficient Tools")) {
+
+                Section(header: Text("高效工具")) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "bolt.fill")
                                 .foregroundColor(.yellow)
-                            Text("iOS Shortcut (Recommended)")
+                            Text("iOS 快捷指令（推荐）")
                                 .font(.headline)
                         }
-                        
-                        Text("Add to Back Tap for instant saving from any app.")
+
+                        Text("添加到轻点背面后，可从任意 App 快速保存视频链接。")
                             .font(.subheadline)
                             .foregroundColor(.gray)
-                        
+
                         Button(action: {
                             if let url = URL(string: "https://www.icloud.com/shortcuts/c8d471ecbc54424388ec070917e00885") {
                                 UIApplication.shared.open(url)
@@ -90,7 +87,7 @@ struct ProfileView: View {
                         }) {
                             HStack {
                                 Image(systemName: "square.and.arrow.down")
-                                Text("Install Shortcut")
+                                Text("安装快捷指令")
                             }
                             .font(.subheadline)
                             .fontWeight(.medium)
@@ -101,41 +98,39 @@ struct ProfileView: View {
                             .cornerRadius(20)
                         }
                         .padding(.top, 4)
-                        
+
                         NavigationLink(destination: ShortcutTutorialView()) {
-                            Text("View Setup Tutorial")
+                            Text("查看设置教程")
                                 .font(.caption)
                                 .foregroundColor(Color(hex: "5E5CE6"))
                         }
                     }
                     .padding(.vertical, 8)
                 }
-                
-                // Settings Section
-                Section(header: Text("Settings")) {
-                    NavigationLink(destination: Text("Notifications Settings")) {
-                        Label("Notifications", systemImage: "bell")
+
+                Section(header: Text("设置")) {
+                    NavigationLink(destination: Text("通知设置")) {
+                        Label("通知", systemImage: "bell")
                     }
-                    NavigationLink(destination: Text("Cache Management")) {
-                        Label("Cache", systemImage: "cylinder.split.1x2")
+                    NavigationLink(destination: Text("缓存管理")) {
+                        Label("缓存", systemImage: "cylinder.split.1x2")
                     }
-                    NavigationLink(destination: Text("About Us")) {
-                        Label("About", systemImage: "info.circle")
+                    NavigationLink(destination: Text("关于我们")) {
+                        Label("关于我们", systemImage: "info.circle")
                     }
                 }
-                
-                // Logout Section
+
                 Section {
                     Button(action: {
                         authManager.logout()
                     }) {
-                        Text("Logout")
+                        Text("退出登录")
                             .foregroundColor(.red)
                     }
                 }
             }
             .listStyle(InsetGroupedListStyle())
-            .navigationTitle("Me")
+            .navigationTitle("我的")
         }
     }
 }
@@ -146,33 +141,33 @@ struct ShortcutTutorialView: View {
             VStack(alignment: .leading, spacing: 20) {
                 TutorialStep(
                     icon: "square.and.arrow.down",
-                    title: "1. Install Shortcut",
-                    description: "Tap the 'Install Shortcut' button and follow the system prompts to add it to your library."
+                    title: "1. 安装快捷指令",
+                    description: "点击“安装快捷指令”，按照系统提示将它添加到快捷指令库。"
                 )
-                
+
                 TutorialStep(
                     icon: "gear",
-                    title: "2. Configure Back Tap",
-                    description: "Go to Settings > Accessibility > Touch > Back Tap."
+                    title: "2. 设置轻点背面",
+                    description: "前往“设置 > 辅助功能 > 触控 > 轻点背面”。"
                 )
-                
+
                 TutorialStep(
                     icon: "hand.tap",
-                    title: "3. Choose Action",
-                    description: "Select 'Double Tap' or 'Triple Tap' and scroll down to choose the 'Video Intel' shortcut."
+                    title: "3. 选择触发动作",
+                    description: "选择“双击”或“三击”，然后在快捷指令列表中选择“视频情报提取”。"
                 )
-                
+
                 TutorialStep(
                     icon: "play.fill",
-                    title: "4. Start Using",
-                    description: "In apps like TikTok or Douyin, copy the video link, then tap the back of your phone to save instantly."
+                    title: "4. 开始使用",
+                    description: "在抖音等 App 中复制视频链接后，轻点手机背面即可快速保存。"
                 )
-                
+
                 Spacer()
             }
             .padding()
         }
-        .navigationTitle("Tutorial")
+        .navigationTitle("设置教程")
         .background(Color(hex: "F7F8FA"))
     }
 }
@@ -181,7 +176,7 @@ struct TutorialStep: View {
     let icon: String
     let title: String
     let description: String
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             Image(systemName: icon)
@@ -189,7 +184,7 @@ struct TutorialStep: View {
                 .foregroundColor(.white)
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(Color(hex: "5E5CE6")))
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)

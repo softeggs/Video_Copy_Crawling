@@ -2,23 +2,22 @@ import SwiftUI
 
 struct DetailView: View {
     let video: VideoRecord
-    
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Header Information
                 VStack(alignment: .leading, spacing: 12) {
                     Text(video.title)
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(Color(hex: "1F2329"))
-                    
+
                     HStack {
                         Label(video.author, systemImage: "person.fill")
                         Spacer()
-                        Label(video.videoType, systemImage: "play.circle.fill")
+                        Label(video.normalizedVideoType, systemImage: "play.circle.fill")
                         Spacer()
-                        Text(video.createdAt.prefix(10))
+                        Text((video.processedAt ?? video.createdAt).prefix(10))
                             .foregroundColor(.gray)
                     }
                     .font(.subheadline)
@@ -28,13 +27,12 @@ struct DetailView: View {
                 .background(Color.white)
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-                
-                // Summary Card
+
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("One Sentence Summary", systemImage: "star.fill")
+                    Label("一句话总结", systemImage: "star.fill")
                         .font(.headline)
                         .foregroundColor(Color(hex: "5E5CE6"))
-                    
+
                     Text(video.summary)
                         .font(.body)
                         .foregroundColor(Color(hex: "1F2329"))
@@ -48,14 +46,17 @@ struct DetailView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "5E5CE6").opacity(0.3), lineWidth: 1)
                 )
-                
-                // Core Points
+
+                if !video.url.isEmpty {
+                    SourceLinkCard(videoURL: video.url)
+                }
+
                 if !video.corePoints.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
-                        Label("Core Points", systemImage: "list.bullet")
+                        Label("核心观点", systemImage: "list.bullet")
                             .font(.headline)
                             .foregroundColor(Color(hex: "1F2329"))
-                        
+
                         ForEach(Array(video.corePoints.enumerated()), id: \.offset) { index, point in
                             HStack(alignment: .top, spacing: 12) {
                                 Text("\(index + 1).")
@@ -72,14 +73,13 @@ struct DetailView: View {
                     .background(Color.white)
                     .cornerRadius(12)
                 }
-                
-                // Golden Sentences
+
                 if !video.goldenSentences.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
-                        Label("Golden Sentences", systemImage: "quote.opening")
+                        Label("金句摘录", systemImage: "quote.opening")
                             .font(.headline)
                             .foregroundColor(Color(hex: "FAAD14"))
-                        
+
                         ForEach(video.goldenSentences, id: \.self) { sentence in
                             HStack {
                                 Rectangle()
@@ -97,13 +97,12 @@ struct DetailView: View {
                     .background(Color(hex: "FFFBE6"))
                     .cornerRadius(12)
                 }
-                
-                // Content
+
                 if !video.correctedText.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Detailed Content", systemImage: "text.aligncenter")
+                        Label("详细内容", systemImage: "text.aligncenter")
                             .font(.headline)
-                        
+
                         Text(video.correctedText)
                             .font(.body)
                             .foregroundColor(Color(hex: "1F2329"))
@@ -121,21 +120,57 @@ struct DetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    // Share action
                     let text = """
                     \(video.title)
                     - \(video.author)
-                    
-                    Summary: \(video.summary)
-                    
-                    link: \(video.url)
+
+                    总结：\(video.summary)
+
+                    链接：\(video.url)
                     """
                     let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-                    UIApplication.shared.windows.first?.rootViewController?.present(av, animated: true, completion: nil)
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootViewController = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+                        rootViewController.present(av, animated: true)
+                    }
                 }) {
                     Image(systemName: "square.and.arrow.up")
                 }
             }
         }
+    }
+}
+
+struct SourceLinkCard: View {
+    let videoURL: String
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("视频原始链接", systemImage: "link")
+                .font(.headline)
+                .foregroundColor(Color(hex: "3370FF"))
+
+            Button {
+                guard let url = URL(string: videoURL) else { return }
+                openURL(url)
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "arrow.up.forward.square")
+                        .foregroundColor(Color(hex: "3370FF"))
+                    Text(videoURL)
+                        .font(.subheadline)
+                        .foregroundColor(Color(hex: "3370FF"))
+                        .multilineTextAlignment(.leading)
+                        .underline()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
 }

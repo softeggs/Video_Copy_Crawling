@@ -17,6 +17,10 @@
 		A0B203F52F3EC38A00FCE338 /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B203E72F3EC38A00FCE338 /* DetailView.swift */; };
 		A0B203F62F3EC38A00FCE338 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B203EA2F3EC38A00FCE338 /* MainTabView.swift */; };
 		A0B203F72F3EC38A00FCE338 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B203E92F3EC38A00FCE338 /* LoginView.swift */; };
+		B1A001112F4A000100000001 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A001212F4A000100000001 /* AppConfig.swift */; };
+		B1A001122F4A000100000001 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A001222F4A000100000001 /* AuthService.swift */; };
+		B1A001132F4A000100000001 /* FeishuAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A001232F4A000100000001 /* FeishuAPIClient.swift */; };
+		B1A001142F4A000100000001 /* VideoRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A001242F4A000100000001 /* VideoRepository.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +54,10 @@
 		A0B203EA2F3EC38A00FCE338 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		A0B203EB2F3EC38A00FCE338 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A0B203EC2F3EC38A00FCE338 /* SubmitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubmitView.swift; sourceTree = "<group>"; };
+		B1A001212F4A000100000001 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		B1A001222F4A000100000001 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		B1A001232F4A000100000001 /* FeishuAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeishuAPIClient.swift; sourceTree = "<group>"; };
+		B1A001242F4A000100000001 /* VideoRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRepository.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -143,8 +151,12 @@
 		A0B203E42F3EC38A00FCE338 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				B1A001212F4A000100000001 /* AppConfig.swift */,
 				A0B203E22F3EC38A00FCE338 /* APIService.swift */,
+				B1A001222F4A000100000001 /* AuthService.swift */,
 				A0B203E32F3EC38A00FCE338 /* AuthManager.swift */,
+				B1A001232F4A000100000001 /* FeishuAPIClient.swift */,
+				B1A001242F4A000100000001 /* VideoRepository.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -314,6 +326,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1A001112F4A000100000001 /* AppConfig.swift in Sources */,
+				B1A001122F4A000100000001 /* AuthService.swift in Sources */,
+				B1A001132F4A000100000001 /* FeishuAPIClient.swift in Sources */,
+				B1A001142F4A000100000001 /* VideoRepository.swift in Sources */,
 				A0B203EE2F3EC38A00FCE338 /* HistoryView.swift in Sources */,
 				A0B203EF2F3EC38A00FCE338 /* SubmitView.swift in Sources */,
 				A0B203F02F3EC38A00FCE338 /* ProfileView.swift in Sources */,

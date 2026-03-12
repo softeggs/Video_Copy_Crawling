@@ -6,19 +6,19 @@ struct MainTabView: View {
             SubmitView()
                 .tabItem {
                     Image(systemName: "plus.circle.fill")
-                    Text("Submit")
+                    Text("提交")
                 }
-            
+
             HistoryView()
                 .tabItem {
                     Image(systemName: "doc.text.fill")
-                    Text("Records")
+                    Text("记录")
                 }
-            
+
             ProfileView()
                 .tabItem {
                     Image(systemName: "person.circle.fill")
-                    Text("Me")
+                    Text("我的")
                 }
         }
         .accentColor(Color(hex: "5E5CE6"))
