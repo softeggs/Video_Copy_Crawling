@@ -2,10 +2,21 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthManager
+    @State private var overview = VideoOverviewResponse(total: 0, today: 0, pending: 0)
+    @State private var isLoadingOverview = false
+    @State private var errorMessage: String?
+
+    private let videoRepository: VideoRepositoryProtocol = AppServices.videoRepository
 
     var body: some View {
         NavigationView {
             List {
+                if let errorMessage {
+                    Section {
+                        InlineErrorView(message: errorMessage)
+                    }
+                }
+
                 Section {
                     HStack(spacing: 16) {
                         Image(systemName: "person.circle.fill")
@@ -28,9 +39,13 @@ struct ProfileView: View {
                     HStack {
                         Spacer()
                         VStack {
-                            Text("156")
-                                .font(.title2)
-                                .fontWeight(.bold)
+                            if isLoadingOverview {
+                                ProgressView()
+                            } else {
+                                Text("\(overview.total)")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
                             Text("累计")
                                 .font(.caption)
                                 .foregroundColor(.gray)
@@ -41,7 +56,7 @@ struct ProfileView: View {
                         Spacer()
 
                         VStack {
-                            Text("12")
+                            Text("\(overview.today)")
                                 .font(.title2)
                                 .fontWeight(.bold)
                             Text("今日")
@@ -54,7 +69,7 @@ struct ProfileView: View {
                         Spacer()
 
                         VStack {
-                            Text("3")
+                            Text("\(overview.pending)")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color(hex: "FAAD14"))
@@ -131,6 +146,39 @@ struct ProfileView: View {
             }
             .listStyle(InsetGroupedListStyle())
             .navigationTitle("我的")
+            .task(id: authManager.token) {
+                await loadOverview()
+            }
+        }
+    }
+
+    private func loadOverview() async {
+        guard let token = authManager.token else {
+            await MainActor.run {
+                overview = VideoOverviewResponse(total: 0, today: 0, pending: 0)
+                isLoadingOverview = false
+                errorMessage = nil
+            }
+            return
+        }
+
+        await MainActor.run {
+            isLoadingOverview = true
+            errorMessage = nil
+        }
+
+        do {
+            let loadedOverview = try await videoRepository.fetchOverview(token: token)
+            await MainActor.run {
+                overview = loadedOverview
+                isLoadingOverview = false
+            }
+        } catch {
+            await MainActor.run {
+                overview = VideoOverviewResponse(total: 0, today: 0, pending: 0)
+                isLoadingOverview = false
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

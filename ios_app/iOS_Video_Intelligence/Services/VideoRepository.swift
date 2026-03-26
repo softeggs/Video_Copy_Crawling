@@ -1,10 +1,59 @@
 import Foundation
 
 protocol VideoRepositoryProtocol {
-    func fetchRecords(tableId: String, page: Int, status: String?) async throws -> VideoListResponse
-    func fetchRecord(tableId: String, recordId: String) async throws -> VideoRecord
-    func submitVideo(tableId: String, url: String) async throws -> VideoSubmitResponse
-    func fetchTypeStats(tableId: String) async throws -> [TypeStat]
+    func fetchRecords(token: String, page: Int, status: String?) async throws -> VideoListResponse
+    func fetchRecord(token: String, recordId: String) async throws -> VideoRecord
+    func submitVideo(token: String, url: String) async throws -> VideoSubmitResponse
+    func fetchTypeStats(token: String) async throws -> [TypeStat]
+    func fetchOverview(token: String) async throws -> VideoOverviewResponse
+}
+
+final class BackendVideoRepository: VideoRepositoryProtocol {
+    private let apiService: APIService
+
+    init(apiService: APIService) {
+        self.apiService = apiService
+    }
+
+    func fetchRecords(token: String, page: Int, status: String?) async throws -> VideoListResponse {
+        do {
+            return try await apiService.fetchVideos(page: page, status: status, token: token)
+        } catch {
+            throw mapAppServiceError(error)
+        }
+    }
+
+    func fetchRecord(token: String, recordId: String) async throws -> VideoRecord {
+        do {
+            return try await apiService.fetchVideo(recordId: recordId, token: token)
+        } catch {
+            throw mapAppServiceError(error)
+        }
+    }
+
+    func submitVideo(token: String, url: String) async throws -> VideoSubmitResponse {
+        do {
+            return try await apiService.submitVideo(videoUrl: url, token: token)
+        } catch {
+            throw mapAppServiceError(error)
+        }
+    }
+
+    func fetchTypeStats(token: String) async throws -> [TypeStat] {
+        do {
+            return try await apiService.fetchTypeStats(token: token)
+        } catch {
+            throw mapAppServiceError(error)
+        }
+    }
+
+    func fetchOverview(token: String) async throws -> VideoOverviewResponse {
+        do {
+            return try await apiService.fetchOverview(token: token)
+        } catch {
+            throw mapAppServiceError(error)
+        }
+    }
 }
 
 final class FeishuVideoRepository: VideoRepositoryProtocol {
@@ -17,11 +66,8 @@ final class FeishuVideoRepository: VideoRepositoryProtocol {
         self.pageSize = pageSize
     }
 
-    func fetchRecords(tableId: String, page: Int, status: String?) async throws -> VideoListResponse {
-        guard !tableId.isEmpty else {
-            throw AppServiceError.missingTableID
-        }
-
+    func fetchRecords(token _: String, page: Int, status: String?) async throws -> VideoListResponse {
+        let tableId = try currentTableID()
         let key = cacheKey(tableId: tableId, status: status)
         let requestedPage = max(page, 1)
 
@@ -63,20 +109,14 @@ final class FeishuVideoRepository: VideoRepositoryProtocol {
         )
     }
 
-    func fetchRecord(tableId: String, recordId: String) async throws -> VideoRecord {
-        guard !tableId.isEmpty else {
-            throw AppServiceError.missingTableID
-        }
-
+    func fetchRecord(token _: String, recordId: String) async throws -> VideoRecord {
+        let tableId = try currentTableID()
         let record = try await client.getRecord(tableId: tableId, recordId: recordId)
         return record.toVideoRecord()
     }
 
-    func submitVideo(tableId: String, url: String) async throws -> VideoSubmitResponse {
-        guard !tableId.isEmpty else {
-            throw AppServiceError.missingTableID
-        }
-
+    func submitVideo(token _: String, url: String) async throws -> VideoSubmitResponse {
+        let tableId = try currentTableID()
         let record = try await client.createRecord(
             tableId: tableId,
             fields: [
@@ -97,11 +137,8 @@ final class FeishuVideoRepository: VideoRepositoryProtocol {
         )
     }
 
-    func fetchTypeStats(tableId: String) async throws -> [TypeStat] {
-        guard !tableId.isEmpty else {
-            throw AppServiceError.missingTableID
-        }
-
+    func fetchTypeStats(token _: String) async throws -> [TypeStat] {
+        let tableId = try currentTableID()
         var counts: [String: Int] = [:]
         var nextPageToken: String?
         var hasMore = false
@@ -132,6 +169,57 @@ final class FeishuVideoRepository: VideoRepositoryProtocol {
 
                 return $0.count > $1.count
             }
+    }
+
+    func fetchOverview(token _: String) async throws -> VideoOverviewResponse {
+        let tableId = try currentTableID()
+        let allRecords = try await fetchAllRecords(tableId: tableId)
+        let todayPrefix = currentDatePrefix()
+        let pendingStatuses: Set<String> = ["待处理", "处理中", "AI润色中"]
+
+        return VideoOverviewResponse(
+            total: allRecords.count,
+            today: allRecords.filter { $0.createdAt.hasPrefix(todayPrefix) }.count,
+            pending: allRecords.filter { pendingStatuses.contains($0.status) }.count
+        )
+    }
+
+    private func currentTableID() throws -> String {
+        guard let tableId = AuthManager.shared.currentUser?.tableId, !tableId.isEmpty else {
+            throw AppServiceError.missingTableID
+        }
+
+        return tableId
+    }
+
+    private func fetchAllRecords(tableId: String) async throws -> [VideoRecord] {
+        var records: [VideoRecord] = []
+        var nextPageToken: String?
+        var hasMore = false
+
+        repeat {
+            let response = try await client.listRecords(
+                tableId: tableId,
+                pageToken: nextPageToken,
+                pageSize: AppConfig.Feishu.statsPageSize,
+                filter: nil
+            )
+
+            records.append(contentsOf: response.items.map { $0.toVideoRecord() })
+            hasMore = response.hasMore
+            nextPageToken = response.pageToken
+        } while hasMore && nextPageToken != nil
+
+        return records
+    }
+
+    private func currentDatePrefix() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 
     private func cacheKey(tableId: String, status: String?) -> String {

@@ -2,22 +2,37 @@ import SwiftUI
 
 struct DetailView: View {
     let video: VideoRecord
+    @EnvironmentObject private var authManager: AuthManager
+    @State private var displayedVideo: VideoRecord
+    @State private var errorMessage: String?
+    @State private var isLoading = false
+
+    private let videoRepository: VideoRepositoryProtocol = AppServices.videoRepository
+
+    init(video: VideoRecord) {
+        self.video = video
+        _displayedVideo = State(initialValue: video)
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                if let errorMessage {
+                    InlineErrorView(message: errorMessage)
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(video.title)
+                    Text(displayedVideo.title)
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(Color(hex: "1F2329"))
 
                     HStack {
-                        Label(video.author, systemImage: "person.fill")
+                        Label(displayedVideo.author.isEmpty ? "未知作者" : displayedVideo.author, systemImage: "person.fill")
                         Spacer()
-                        Label(video.normalizedVideoType, systemImage: "play.circle.fill")
+                        Label(displayedVideo.normalizedVideoType, systemImage: "play.circle.fill")
                         Spacer()
-                        Text((video.processedAt ?? video.createdAt).prefix(10))
+                        Text((displayedVideo.processedAt ?? displayedVideo.createdAt).prefix(10))
                             .foregroundColor(.gray)
                     }
                     .font(.subheadline)
@@ -33,10 +48,14 @@ struct DetailView: View {
                         .font(.headline)
                         .foregroundColor(Color(hex: "5E5CE6"))
 
-                    Text(video.summary)
-                        .font(.body)
-                        .foregroundColor(Color(hex: "1F2329"))
-                        .lineSpacing(4)
+                    if isLoading && displayedVideo.summary.isEmpty {
+                        ProgressView()
+                    } else {
+                        Text(displayedVideo.summary.isEmpty ? "暂无总结" : displayedVideo.summary)
+                            .font(.body)
+                            .foregroundColor(Color(hex: "1F2329"))
+                            .lineSpacing(4)
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -47,17 +66,17 @@ struct DetailView: View {
                         .stroke(Color(hex: "5E5CE6").opacity(0.3), lineWidth: 1)
                 )
 
-                if !video.url.isEmpty {
-                    SourceLinkCard(videoURL: video.url)
+                if !displayedVideo.url.isEmpty {
+                    SourceLinkCard(videoURL: displayedVideo.url)
                 }
 
-                if !video.corePoints.isEmpty {
+                if !displayedVideo.corePoints.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
                         Label("核心观点", systemImage: "list.bullet")
                             .font(.headline)
                             .foregroundColor(Color(hex: "1F2329"))
 
-                        ForEach(Array(video.corePoints.enumerated()), id: \.offset) { index, point in
+                        ForEach(Array(displayedVideo.corePoints.enumerated()), id: \.offset) { index, point in
                             HStack(alignment: .top, spacing: 12) {
                                 Text("\(index + 1).")
                                     .font(.system(.body, design: .monospaced))
@@ -74,13 +93,13 @@ struct DetailView: View {
                     .cornerRadius(12)
                 }
 
-                if !video.goldenSentences.isEmpty {
+                if !displayedVideo.goldenSentences.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
                         Label("金句摘录", systemImage: "quote.opening")
                             .font(.headline)
                             .foregroundColor(Color(hex: "FAAD14"))
 
-                        ForEach(video.goldenSentences, id: \.self) { sentence in
+                        ForEach(displayedVideo.goldenSentences, id: \.self) { sentence in
                             HStack {
                                 Rectangle()
                                     .fill(Color(hex: "FAAD14"))
@@ -98,12 +117,12 @@ struct DetailView: View {
                     .cornerRadius(12)
                 }
 
-                if !video.correctedText.isEmpty {
+                if !displayedVideo.correctedText.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("详细内容", systemImage: "text.aligncenter")
                             .font(.headline)
 
-                        Text(video.correctedText)
+                        Text(displayedVideo.correctedText)
                             .font(.body)
                             .foregroundColor(Color(hex: "1F2329"))
                             .lineSpacing(6)
@@ -117,16 +136,19 @@ struct DetailView: View {
         }
         .background(Color(hex: "F7F8FA").edgesIgnoringSafeArea(.all))
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: video.id) {
+            await loadLatestDetail()
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     let text = """
-                    \(video.title)
-                    - \(video.author)
+                    \(displayedVideo.title)
+                    - \(displayedVideo.author)
 
-                    总结：\(video.summary)
+                    总结：\(displayedVideo.summary)
 
-                    链接：\(video.url)
+                    链接：\(displayedVideo.url)
                     """
                     let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
                     if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -136,6 +158,30 @@ struct DetailView: View {
                 }) {
                     Image(systemName: "square.and.arrow.up")
                 }
+            }
+        }
+    }
+
+    private func loadLatestDetail() async {
+        guard let token = authManager.token else {
+            return
+        }
+
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+
+        do {
+            let latestVideo = try await videoRepository.fetchRecord(token: token, recordId: video.id)
+            await MainActor.run {
+                displayedVideo = latestVideo
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
             }
         }
     }

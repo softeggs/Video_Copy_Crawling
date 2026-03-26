@@ -13,7 +13,7 @@ struct HistoryView: View {
     @State private var allVideos: [VideoRecord] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var loadedTableId: String?
+    @State private var loadedUserId: String?
     @State private var searchText = ""
     @State private var selectedSort: RecordSortOption = .newestFirst
     @State private var selectedCategory = "全部类别"
@@ -68,7 +68,7 @@ struct HistoryView: View {
                         List {
                             ForEach(filteredVideos) { video in
                                 ZStack {
-                                    NavigationLink(destination: DetailView(video: video)) {
+                                    NavigationLink(destination: DetailView(video: video).environmentObject(authManager)) {
                                         EmptyView()
                                     }
                                     .opacity(0)
@@ -89,22 +89,22 @@ struct HistoryView: View {
             }
             .navigationTitle("记录")
             .searchable(text: $searchText, prompt: "搜索详细内容")
-            .task(id: authManager.currentUser?.tableId) {
-                guard let tableId = authManager.currentUser?.tableId else {
+            .task(id: authManager.currentUser?.userId) {
+                guard let userId = authManager.currentUser?.userId, authManager.token != nil else {
                     await MainActor.run {
-                        loadedTableId = nil
+                        loadedUserId = nil
                         allVideos = []
                         errorMessage = nil
                     }
                     return
                 }
 
-                guard loadedTableId != tableId || allVideos.isEmpty else {
+                guard loadedUserId != userId || allVideos.isEmpty else {
                     return
                 }
 
                 await MainActor.run {
-                    loadedTableId = tableId
+                    loadedUserId = userId
                 }
                 await refreshData()
             }
@@ -142,7 +142,7 @@ struct HistoryView: View {
     }
 
     private func refreshData() async {
-        guard let tableId = authManager.currentUser?.tableId else {
+        guard let token = authManager.token else {
             await MainActor.run {
                 errorMessage = AppServiceError.missingCurrentUser.localizedDescription
             }
@@ -155,7 +155,7 @@ struct HistoryView: View {
         }
 
         do {
-            let videos = try await loadAllRecords(tableId: tableId)
+            let videos = try await loadAllRecords(token: token)
             await MainActor.run {
                 allVideos = videos
                 if !availableCategories.contains(selectedCategory) {
@@ -171,13 +171,13 @@ struct HistoryView: View {
         }
     }
 
-    private func loadAllRecords(tableId: String) async throws -> [VideoRecord] {
+    private func loadAllRecords(token: String) async throws -> [VideoRecord] {
         var page = 1
         var hasMore = false
         var loadedRecords: [VideoRecord] = []
 
         repeat {
-            let response = try await videoRepository.fetchRecords(tableId: tableId, page: page, status: nil)
+            let response = try await videoRepository.fetchRecords(token: token, page: page, status: nil)
             let newItems = response.items.filter { incoming in
                 !loadedRecords.contains(where: { $0.id == incoming.id })
             }
@@ -360,14 +360,13 @@ struct FilterChip: View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
             Text(title)
-                .lineLimit(1)
         }
         .font(.caption)
-        .foregroundColor(Color(hex: "1F2329"))
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color.white)
-        .clipShape(Capsule())
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .foregroundColor(Color(hex: "1F2329"))
+        .cornerRadius(10)
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }

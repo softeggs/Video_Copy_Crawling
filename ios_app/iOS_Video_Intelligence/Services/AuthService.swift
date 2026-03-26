@@ -35,8 +35,49 @@ enum AppServiceError: LocalizedError, Equatable {
     }
 }
 
+func mapAppServiceError(_ error: Error, treatUnauthorizedAsInvalidCredentials: Bool = false) -> AppServiceError {
+    if let appError = error as? AppServiceError {
+        return appError
+    }
+
+    guard let apiError = error as? APIError else {
+        return .serverError(error.localizedDescription)
+    }
+
+    switch apiError {
+    case .invalidURL:
+        return .invalidURL
+    case .invalidResponse:
+        return .invalidResponse
+    case .unauthorized:
+        return treatUnauthorizedAsInvalidCredentials ? .invalidCredentials : .unauthorized
+    case .serverError(let message):
+        return .serverError(message)
+    case .decodingError:
+        return .decodingError
+    case .transportError(let message):
+        return .serverError(message)
+    }
+}
+
 protocol AuthServiceProtocol {
     func login(username: String, password: String) async throws -> LoginResponse
+}
+
+final class BackendAuthService: AuthServiceProtocol {
+    private let apiService: APIService
+
+    init(apiService: APIService) {
+        self.apiService = apiService
+    }
+
+    func login(username: String, password: String) async throws -> LoginResponse {
+        do {
+            return try await apiService.login(request: LoginRequest(username: username, password: password))
+        } catch {
+            throw mapAppServiceError(error, treatUnauthorizedAsInvalidCredentials: true)
+        }
+    }
 }
 
 final class LocalMockAuthService: AuthServiceProtocol {

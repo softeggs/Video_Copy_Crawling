@@ -123,7 +123,7 @@ struct SubmitView: View {
             }
             .background(Color(hex: "F7F8FA").ignoresSafeArea())
             .navigationBarHidden(true)
-            .task(id: authManager.currentUser?.tableId) {
+            .task(id: authManager.token) {
                 await loadTypeStats()
             }
             .alert(isPresented: $showSuccess) {
@@ -138,14 +138,25 @@ struct SubmitView: View {
 
     private func pasteFromClipboard() {
         if let string = UIPasteboard.general.string {
-            url = string
+            if let extractedURL = VideoURLExtractor.extract(from: string) {
+                url = extractedURL
+                errorMessage = nil
+            } else {
+                url = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                errorMessage = "未识别到可提交的视频链接，请检查剪贴板内容。"
+            }
         }
     }
 
     private func submitVideo() {
         guard !url.isEmpty else { return }
-        guard let tableId = authManager.currentUser?.tableId else {
+        guard let token = authManager.token else {
             errorMessage = AppServiceError.missingCurrentUser.localizedDescription
+            return
+        }
+
+        guard let extractedURL = VideoURLExtractor.extract(from: url) else {
+            errorMessage = "未识别到可提交的视频链接，请检查粘贴内容。"
             return
         }
 
@@ -154,11 +165,12 @@ struct SubmitView: View {
 
         Task {
             do {
-                let response = try await videoRepository.submitVideo(tableId: tableId, url: url)
-                let refreshedStats = try? await videoRepository.fetchTypeStats(tableId: tableId)
+                let response = try await videoRepository.submitVideo(token: token, url: extractedURL)
+                let refreshedStats = try? await videoRepository.fetchTypeStats(token: token)
 
                 await MainActor.run {
                     isSubmitting = false
+                    url = extractedURL
                     if response.success {
                         url = ""
                         typeStats = refreshedStats ?? typeStats
@@ -177,10 +189,11 @@ struct SubmitView: View {
     }
 
     private func loadTypeStats() async {
-        guard let tableId = authManager.currentUser?.tableId else {
+        guard let token = authManager.token else {
             await MainActor.run {
                 typeStats = []
                 isLoadingStats = false
+                errorMessage = nil
             }
             return
         }
@@ -190,7 +203,7 @@ struct SubmitView: View {
         }
 
         do {
-            let stats = try await videoRepository.fetchTypeStats(tableId: tableId)
+            let stats = try await videoRepository.fetchTypeStats(token: token)
             await MainActor.run {
                 typeStats = stats
                 isLoadingStats = false

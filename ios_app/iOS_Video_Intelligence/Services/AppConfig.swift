@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfig {
-    static let useFeishuDirect = true
+    static let useFeishuDirect = false
 
     enum Feishu {
         static let appId = "cli_a9c17878db38dced"
@@ -14,18 +14,24 @@ enum AppConfig {
     }
 
     enum Server {
-        static let baseURL = "https://your-server.com/api"
+        static let baseURL = "http://192.168.0.32:8002"
     }
 }
 
 enum AppServices {
-    static let authService: AuthServiceProtocol = LocalMockAuthService()
+    static let authService: AuthServiceProtocol = {
+        if AppConfig.useFeishuDirect {
+            return LocalMockAuthService()
+        }
+
+        return BackendAuthService(apiService: .shared)
+    }()
 
     static let videoRepository: VideoRepositoryProtocol = {
         if AppConfig.useFeishuDirect {
             return FeishuVideoRepository(client: FeishuAPIClient.shared)
         }
 
-        fatalError("Server mode is not implemented yet.")
+        return BackendVideoRepository(apiService: .shared)
     }()
 }

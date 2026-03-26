@@ -36,19 +36,43 @@ struct iOS_Video_IntelligenceTests {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = AuthManager(authService: LocalMockAuthService(), userDefaults: defaults)
+        let backendUser = User(
+            userId: "1",
+            username: "api_user",
+            displayName: "API User",
+            tableId: ""
+        )
+
+        let manager = AuthManager(
+            authService: StubAuthService(
+                response: LoginResponse(
+                    token: "backend_token",
+                    user: backendUser
+                )
+            ),
+            userDefaults: defaults
+        )
         #expect(manager.isAuthenticated == false)
 
-        try await manager.login(username: "test", password: "0104")
+        try await manager.login(username: "api_user", password: "secret")
 
         #expect(manager.isAuthenticated == true)
-        #expect(manager.currentUser?.tableId == LocalMockAuthService.tableID)
-        #expect(manager.token == "local_mock_test_token")
+        #expect(manager.currentUser?.tableId == "")
+        #expect(manager.currentUser?.displayName == "API User")
+        #expect(manager.token == "backend_token")
 
-        let restoredManager = AuthManager(authService: LocalMockAuthService(), userDefaults: defaults)
+        let restoredManager = AuthManager(
+            authService: StubAuthService(
+                response: LoginResponse(
+                    token: "backend_token",
+                    user: backendUser
+                )
+            ),
+            userDefaults: defaults
+        )
         #expect(restoredManager.isAuthenticated == true)
-        #expect(restoredManager.currentUser?.username == "test")
-        #expect(restoredManager.currentUser?.displayName == "测试账号")
+        #expect(restoredManager.currentUser?.username == "api_user")
+        #expect(restoredManager.currentUser?.displayName == "API User")
 
         restoredManager.logout()
 
@@ -88,6 +112,141 @@ struct iOS_Video_IntelligenceTests {
         #expect(record.matchesSearch("教程"))
         #expect(record.matchesSearch("标签A"))
         #expect(record.matchesSearch("不存在") == false)
+    }
+
+    @Test func videoRecordDecodesBackendSnakeCasePayload() throws {
+        let data = """
+        {
+          "id": "12",
+          "title": "测试视频",
+          "author": "作者A",
+          "url": "https://example.com/video",
+          "summary": "一句话总结",
+          "core_points": ["观点1", "观点2"],
+          "corrected_text": "详细内容",
+          "golden_sentences": ["金句1"],
+          "tags": ["AI"],
+          "video_type": "教程类",
+          "status": "已完成",
+          "markdown_content": "# 标题",
+          "created_at": "2026-03-10T10:00:00Z",
+          "processed_at": "2026-03-10T10:05:00Z"
+        }
+        """.data(using: .utf8)!
+
+        let record = try JSONDecoder().decode(VideoRecord.self, from: data)
+
+        #expect(record.id == "12")
+        #expect(record.corePoints == ["观点1", "观点2"])
+        #expect(record.correctedText == "详细内容")
+        #expect(record.goldenSentences == ["金句1"])
+        #expect(record.videoType == "教程类")
+        #expect(record.markdownContent == "# 标题")
+    }
+
+    @Test func typeStatsAndOverviewDecodeBackendResponses() throws {
+        let statsData = """
+        [
+          { "video_type": "教程类", "count": 2 },
+          { "video_type": "工具推荐", "count": 1 }
+        ]
+        """.data(using: .utf8)!
+
+        let overviewData = """
+        {
+          "total": 8,
+          "today": 3,
+          "pending": 2
+        }
+        """.data(using: .utf8)!
+
+        let stats = try JSONDecoder().decode([TypeStat].self, from: statsData)
+        let overview = try JSONDecoder().decode(VideoOverviewResponse.self, from: overviewData)
+
+        #expect(stats.map(\.videoType) == ["教程类", "工具推荐"])
+        #expect(stats.map(\.count) == [2, 1])
+        #expect(overview.total == 8)
+        #expect(overview.today == 3)
+        #expect(overview.pending == 2)
+    }
+
+    @Test func videoURLExtractorPullsShareLinkOutOfSocialCopywriting() {
+        let sharedText = """
+        车改完了，鱼在哪里？ http://xhslink.com/o/2hanfdheS5H
+        复制后打开【小红书】查看笔记！
+        """
+
+        let extractedURL = VideoURLExtractor.extract(from: sharedText)
+
+        #expect(extractedURL == "http://xhslink.com/o/2hanfdheS5H")
+    }
+
+    @Test func videoURLExtractorRejectsTextWithoutSupportedVideoLink() {
+        let extractedURL = VideoURLExtractor.extract(from: "这是普通文本，没有可提交链接。")
+
+        #expect(extractedURL == nil)
+    }
+
+    @Test func apiServiceLoginUsesJsonBodyAndDecodesResponse() async throws {
+        let session = makeSession(
+            statusCode: 200,
+            body: """
+            {
+              "token": "backend_token",
+              "user": {
+                "user_id": "1",
+                "username": "api_user",
+                "display_name": "API User",
+                "table_id": ""
+              }
+            }
+            """
+        ) { request in
+            #expect(request.url?.absoluteString == "http://192.168.0.32:8002/auth/login")
+            #expect(request.httpMethod == "POST")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            let body = String(data: request.httpBody ?? Data(), encoding: .utf8)
+            #expect(body == #"{"username":"api_user","password":"secret"}"#)
+        }
+
+        let service = APIService(session: session, baseURL: "http://192.168.0.32:8002")
+        let response = try await service.login(request: LoginRequest(username: "api_user", password: "secret"))
+
+        #expect(response.token == "backend_token")
+        #expect(response.user.displayName == "API User")
+    }
+
+    @Test func backendAuthServiceMapsUnauthorizedToInvalidCredentials() async {
+        let session = makeSession(statusCode: 401, body: #"{"detail":"Invalid username or password"}"#)
+        let service = BackendAuthService(
+            apiService: APIService(session: session, baseURL: "http://192.168.0.32:8002")
+        )
+
+        do {
+            _ = try await service.login(username: "bad", password: "wrong")
+            Issue.record("Expected login to fail for invalid backend credentials.")
+        } catch {
+            #expect(error as? AppServiceError == .invalidCredentials)
+        }
+    }
+
+    @Test func apiServiceParsesFastAPIDetailErrors() async {
+        let session = makeSession(statusCode: 422, body: #"{"detail":"URL format is invalid"}"#)
+        let service = APIService(session: session, baseURL: "http://192.168.0.32:8002")
+
+        do {
+            _ = try await service.submitVideo(videoUrl: "bad-url", token: "token")
+            Issue.record("Expected submitVideo to fail for invalid URL.")
+        } catch let error as APIError {
+            switch error {
+            case .serverError(let message):
+                #expect(message == "URL format is invalid")
+            default:
+                Issue.record("Expected serverError with FastAPI detail, got \(error.localizedDescription).")
+            }
+        } catch {
+            Issue.record("Expected APIError, got \(error.localizedDescription).")
+        }
     }
 
     @Test func feishuRecordMappingHandlesMixedFieldShapes() {
@@ -135,4 +294,63 @@ struct iOS_Video_IntelligenceTests {
         #expect(video.createdAt.contains("T"))
         #expect(video.processedAt != nil)
     }
+}
+
+private struct StubAuthService: AuthServiceProtocol {
+    let response: LoginResponse
+
+    func login(username _: String, password _: String) async throws -> LoginResponse {
+        response
+    }
+}
+
+private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+private func makeSession(
+    statusCode: Int,
+    body: String,
+    assertRequest: ((URLRequest) -> Void)? = nil
+) -> URLSession {
+    MockURLProtocol.requestHandler = { request in
+        assertRequest?(request)
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "http://192.168.0.32:8002")!,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, Data(body.utf8))
+    }
+
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockURLProtocol.self]
+    return URLSession(configuration: configuration)
 }

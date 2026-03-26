@@ -105,7 +105,7 @@ struct LoginView: View {
 
                 Spacer()
 
-                Text("测试账号：test / 0104")
+                Text("请使用后端已注册账号登录")
                     .font(.caption)
                     .foregroundColor(.gray)
                     .padding(.bottom, 20)

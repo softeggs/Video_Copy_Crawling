@@ -16,6 +16,23 @@ struct VideoRecord: Identifiable, Codable, Equatable {
     let createdAt: String
     let processedAt: String?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case author
+        case url
+        case summary
+        case corePoints = "core_points"
+        case correctedText = "corrected_text"
+        case goldenSentences = "golden_sentences"
+        case tags
+        case videoType = "video_type"
+        case status
+        case markdownContent = "markdown_content"
+        case createdAt = "created_at"
+        case processedAt = "processed_at"
+    }
+
     var normalizedVideoType: String {
         VideoTypeNormalizer.normalize(videoType)
     }
@@ -106,6 +123,17 @@ struct TypeStat: Identifiable, Codable, Equatable {
     var id: String { videoType }
     let videoType: String
     let count: Int
+
+    enum CodingKeys: String, CodingKey {
+        case videoType = "video_type"
+        case count
+    }
+}
+
+struct VideoOverviewResponse: Codable, Equatable {
+    let total: Int
+    let today: Int
+    let pending: Int
 }
 
 enum VideoTypeNormalizer {
