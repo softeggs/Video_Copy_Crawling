@@ -1,39 +1,45 @@
-from collections.abc import Generator
+from __future__ import annotations
+
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from . import models
-from .auth import decode_access_token
-from .database import SessionLocal
+from backend.auth import decode_access_token
+from backend.database import get_db
+from backend.models import User
+
+security = HTTPBearer(auto_error=False)
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    db: Annotated[Session, Depends(get_db)],
+) -> User:
+    """获取当前登录用户。"""
 
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    user_id = decode_access_token(credentials.credentials)
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
-    try:
-        payload = decode_access_token(token)
-        user_id = int(payload.get("sub", 0))
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive or not found")
     return user
 
 
-def get_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
-    if not current_user.is_admin:
+def get_current_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """获取管理员用户。"""
+
+    if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin permission required")
-    return current_user
+    return user
+

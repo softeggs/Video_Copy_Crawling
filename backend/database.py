@@ -1,30 +1,47 @@
-import os
+from __future__ import annotations
+
+from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+from utils.config import config
 
 
-def _build_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
+def _normalise_sqlite_url(database_url: str) -> str:
+    """兼容本地路径和 SQLite URL。"""
+
+    if database_url.startswith("sqlite:///"):
         return database_url
-
-    host = os.getenv("MYSQL_HOST", "127.0.0.1")
-    port = os.getenv("MYSQL_PORT", "3306")
-    user = os.getenv("MYSQL_USER", "root")
-    password = os.getenv("MYSQL_PASSWORD", "password")
-    db = os.getenv("MYSQL_DATABASE", "video_copy_crawling")
-    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{db}?charset=utf8mb4"
+    path = Path(database_url).expanduser().resolve()
+    return f"sqlite:///{path.as_posix()}"
 
 
-DATABASE_URL = _build_database_url()
-
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    future=True,
+DATABASE_URL = (
+    _normalise_sqlite_url(config.DATABASE_URL)
+    if config.DATABASE_URL.startswith("sqlite") or "://" not in config.DATABASE_URL
+    else config.DATABASE_URL
 )
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+engine_kwargs: dict[str, object] = {"future": True, "pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-Base = declarative_base()
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False, class_=Session)
+
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 基类。"""
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI 数据库依赖。"""
+
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+

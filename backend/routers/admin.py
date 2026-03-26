@@ -1,157 +1,97 @@
-from datetime import datetime, timedelta
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from ..auth import hash_password
-from ..dependencies import get_admin_user, get_db
-
+from backend.constants import COMPLETED_STATUS, PENDING_LIKE_STATUSES
+from backend.database import get_db
+from backend.dependencies import get_current_admin
+from backend.models import User, Video
+from backend.schemas import AdminStatsResponse, AdminUserDTO, CleanupResponse, VideoRecordDTO
+from backend.routers.videos import _to_video_dto, _isoformat
+from utils.config import config
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/users", response_model=list[schemas.UserAdminResponse])
+@router.get("/users", response_model=list[AdminUserDTO])
 def list_users(
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> list[schemas.UserAdminResponse]:
-    return (
-        db.query(models.User)
-        .order_by(models.User.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-
-
-@router.post("/users", response_model=schemas.UserAdminResponse)
-def create_user(
-    payload: schemas.UserAdminCreateRequest,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> schemas.UserAdminResponse:
-    exists = (
-        db.query(models.User)
-        .filter((models.User.username == payload.username) | (models.User.email == payload.email))
-        .first()
-    )
-    if exists:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists")
-
-    user = models.User(
-        username=payload.username,
-        email=payload.email,
-        display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
-        is_admin=payload.is_admin,
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@router.put("/users/{user_id}", response_model=schemas.UserAdminResponse)
-def update_user(
-    user_id: int,
-    payload: schemas.UserAdminUpdateRequest,
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> schemas.UserAdminResponse:
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    if payload.display_name is not None:
-        user.display_name = payload.display_name
-    if payload.is_active is not None:
-        user.is_active = payload.is_active
-    if payload.is_admin is not None:
-        user.is_admin = payload.is_admin
-
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@router.get("/videos/pending", response_model=list[schemas.VideoRecordResponse])
-def pending_videos(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> list[schemas.VideoRecordResponse]:
-    items = (
-        db.query(models.Video)
-        .filter(models.Video.status.in_(["待处理", "处理中"]))
-        .order_by(models.Video.created_at.asc())
-        .all()
-    )
+    _: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[AdminUserDTO]:
+    users = db.execute(select(User).order_by(User.created_at.asc(), User.id.asc())).scalars().all()
     return [
-        schemas.VideoRecordResponse(
-            id=str(item.id),
-            title=item.title,
-            author=item.author,
-            url=item.url,
-            summary=item.summary,
-            core_points=item.core_points or [],
-            corrected_text=item.corrected_text,
-            golden_sentences=item.golden_sentences or [],
-            tags=item.tags or [],
-            video_type=item.video_type,
-            status=item.status,
-            markdown_content=item.markdown_content,
-            created_at=item.created_at.isoformat(),
-            processed_at=item.processed_at.isoformat() if item.processed_at else None,
+        AdminUserDTO(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            display_name=user.display_name,
+            is_active=user.is_active,
+            is_admin=user.is_admin,
+            created_at=_isoformat(user.created_at) or "",
         )
-        for item in items
+        for user in users
     ]
 
 
-@router.get("/stats")
+@router.get("/videos/pending", response_model=list[VideoRecordDTO])
+def list_pending_videos(
+    _: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[VideoRecordDTO]:
+    videos = db.execute(
+        select(Video)
+        .where(Video.status.in_(tuple(PENDING_LIKE_STATUSES)))
+        .order_by(Video.created_at.asc(), Video.id.asc())
+    ).scalars().all()
+    return [_to_video_dto(video) for video in videos]
+
+
+@router.get("/stats", response_model=AdminStatsResponse)
 def admin_stats(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> dict:
-    total_users = db.query(models.User).count()
-    active_users = db.query(models.User).filter(models.User.is_active.is_(True)).count()
-    total_videos = db.query(models.Video).count()
-    pending_videos = db.query(models.Video).filter(models.Video.status.in_(["待处理", "处理中"]))
-    return {
-        "total_users": total_users,
-        "active_users": active_users,
-        "total_videos": total_videos,
-        "pending_videos": pending_videos.count(),
-    }
+    _: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AdminStatsResponse:
+    total_users = db.execute(select(func.count(User.id))).scalar_one()
+    active_users = db.execute(select(func.count(User.id)).where(User.is_active.is_(True))).scalar_one()
+    total_videos = db.execute(select(func.count(Video.id))).scalar_one()
+    pending_videos = db.execute(select(func.count(Video.id)).where(Video.status.in_(tuple(PENDING_LIKE_STATUSES)))).scalar_one()
+    return AdminStatsResponse(
+        total_users=total_users,
+        active_users=active_users,
+        total_videos=total_videos,
+        pending_videos=pending_videos,
+    )
 
 
 @router.get("/api-balance")
-def api_balance(_: models.User = Depends(get_admin_user)) -> dict:
+def api_balance(_: Annotated[User, Depends(get_current_admin)]) -> dict[str, object]:
     return {
-        "openai": "unknown",
-        "kimi": "unknown",
-        "gemini": "unknown",
+        "is_placeholder": True,
+        "message": "API balance aggregation is not implemented yet for the rebuilt backend.",
+        "providers": {"openai": "unknown", "kimi": "unknown", "gemini": "unknown"},
     }
 
 
-@router.post("/cleanup")
-def cleanup_processed_content(
-    days: int = Query(default=30, ge=1),
-    db: Session = Depends(get_db),
-    _: models.User = Depends(get_admin_user),
-) -> dict:
-    threshold = datetime.utcnow() - timedelta(days=days)
-    rows = (
-        db.query(models.Video)
-        .filter(models.Video.status == "已完成", models.Video.processed_at.is_not(None), models.Video.processed_at < threshold)
-        .all()
-    )
+@router.post("/cleanup", response_model=CleanupResponse)
+def cleanup_content(
+    _: Annotated[User, Depends(get_current_admin)],
+    db: Annotated[Session, Depends(get_db)],
+    days: int = Query(default_factory=lambda: config.CLEANUP_DAYS_DEFAULT, ge=1),
+) -> CleanupResponse:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    records = db.execute(
+        select(Video).where(Video.status == COMPLETED_STATUS, Video.processed_at.is_not(None), Video.processed_at < cutoff)
+    ).scalars().all()
 
-    for row in rows:
-        row.corrected_text = ""
-        row.markdown_content = ""
+    for video in records:
+        video.corrected_text = ""
+        video.markdown_content = ""
 
     db.commit()
-    return {"success": True, "cleaned_records": len(rows), "days": days}
+    return CleanupResponse(success=True, cleaned_records=len(records), days=days)
+

@@ -13,7 +13,7 @@ class APIService {
     static let shared = APIService()
     private init() {}
     
-    private let baseURL = "http://127.0.0.1:8001" // Local development URL
+    private let baseURL = "http://127.0.0.1:8002" // Local development URL
     
     func login(request: LoginRequest) async throws -> LoginResponse {
         let urlString = "\(baseURL)/api/auth/token"

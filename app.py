@@ -1,817 +1,409 @@
-import streamlit as st
+from __future__ import annotations
+
 import asyncio
-from pathlib import Path
+import json
+from datetime import datetime
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+import streamlit as st
+from sqlalchemy import func, or_, select
+
+from backend.constants import COMPLETED_STATUS, FAILED_STATUS, PENDING_STATUS, PROCESSING_STATUS
+from backend.database import DATABASE_URL, SessionLocal
+from backend.models import User, Video
+from core.db_scheduler import DatabaseScheduler, DatabaseWritebackAdapter
 from core.pipeline import ProcessingPipeline
-from core.background_scheduler import background_scheduler
 from utils.config import config
 
-# 页面配置
-st.set_page_config(
-    page_title="短视频内容情报提取系统",
-    page_icon="🎬",
-    layout="wide"
-)
+st.set_page_config(page_title="内部调试台", page_icon="🛠️", layout="wide")
 
-# 初始化
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
 
-# 自动启动定时任务（仅在首次加载时）
-if 'scheduler_auto_started' not in st.session_state:
-    st.session_state.scheduler_auto_started = False
-    
-    # 检查是否配置了自动启动
-    if config.AUTO_START_SCHEDULER:
-        # 检查飞书配置是否完整
-        feishu_configured = all([
-            config.FEISHU_APP_ID,
-            config.FEISHU_APP_SECRET,
-            config.FEISHU_BITABLE_APP_TOKEN,
-            config.FEISHU_BITABLE_TABLE_ID
-        ])
-        
-        if feishu_configured:
-            # 自动启动定时任务
-            result = background_scheduler.start(check_interval=config.SCHEDULER_CHECK_INTERVAL)
-            if result['success']:
-                st.session_state.scheduler_auto_started = True
-                st.toast(f"✅ 定时任务已自动启动（每 {config.SCHEDULER_CHECK_INTERVAL // 60} 分钟检查一次）", icon="✅")
+def fetch_backend_health() -> dict[str, Any]:
+    """读取当前配置指向的后端健康状态。"""
 
-# 标题
-st.title("🎬 短视频内容情报提取系统")
-st.markdown("支持抖音、B站、小红书等平台，自动提取视频文案并同步至飞书")
+    url = f"{config.API_BASE_URL}/health"
+    request = Request(url, headers={"Accept": "application/json"})
 
-# 侧边栏配置
-with st.sidebar:
-    st.header("⚙️ 系统配置")
-    
-    st.subheader("AI 设置")
-    
-    # AI 润色开关
-    enable_ai_polish = st.checkbox(
-        "启用 AI 润色",
-        value=config.ENABLE_AI_POLISH,
-        help="关闭后将只进行语音识别，不进行 AI 处理"
-    )
-    
-    # AI 提供商选择
-    ai_provider = st.selectbox(
-        "AI 提供商",
-        ["openai", "gemini"],
-        index=0 if config.AI_PROVIDER == "openai" else 1,
-        disabled=not enable_ai_polish,
-        help="选择使用 OpenAI 或 Google Gemini"
-    )
-    
-    if enable_ai_polish:
-        if ai_provider == "openai":
-            st.info(f"🤖 模型: {config.OPENAI_MODEL}")
-            if not config.OPENAI_API_KEY:
-                st.warning("⚠️ 未配置 OpenAI API Key")
-        else:
-            st.info(f"🤖 模型: {config.GEMINI_MODEL}")
-            if not config.GEMINI_API_KEY:
-                st.warning("⚠️ 未配置 Gemini API Key")
-    else:
-        st.info("ℹ️ AI 润色已禁用")
-    
-    st.divider()
-    
-    st.subheader("Whisper 模型")
-    whisper_model = st.selectbox(
-        "语音识别模型",
-        ["tiny", "base", "small", "medium", "large"],
-        index=["tiny", "base", "small", "medium", "large"].index(config.WHISPER_MODEL) if config.WHISPER_MODEL in ["tiny", "base", "small", "medium", "large"] else 1,
-        help="模型越大精度越高，但速度越慢\n\n• tiny: 最快，精度较低\n• base: 平衡（默认）\n• small: 较好精度\n• medium: 高精度\n• large: 最高精度，速度慢"
-    )
-    
-    model_info = {
-        "tiny": "~39M 参数，速度最快",
-        "base": "~74M 参数，推荐日常使用",
-        "small": "~244M 参数，较高精度",
-        "medium": "~769M 参数，高精度",
-        "large": "~1550M 参数，最高精度"
+    try:
+        with urlopen(request, timeout=2) as response:  # noqa: S310 - 本地固定调试地址
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        return {"status": "http_error", "detail": str(exc), "url": url}
+    except URLError as exc:
+        return {"status": "offline", "detail": str(exc), "url": url}
+    except Exception as exc:  # noqa: BLE001 - 调试台需要完整兜底
+        return {"status": "error", "detail": str(exc), "url": url}
+
+
+def get_dashboard_snapshot() -> dict[str, Any]:
+    """读取数据库摘要。"""
+
+    with SessionLocal() as session:
+        total_users = session.execute(select(func.count(User.id))).scalar_one()
+        active_users = session.execute(select(func.count(User.id)).where(User.is_active.is_(True))).scalar_one()
+        total_videos = session.execute(select(func.count(Video.id))).scalar_one()
+        pending_videos = session.execute(
+            select(func.count(Video.id)).where(Video.status.in_((PENDING_STATUS, PROCESSING_STATUS)))
+        ).scalar_one()
+        status_rows = session.execute(select(Video.status, func.count(Video.id)).group_by(Video.status)).all()
+
+    return {
+        "total_users": total_users,
+        "active_users": active_users,
+        "total_videos": total_videos,
+        "pending_videos": pending_videos,
+        "status_counts": {status: count for status, count in status_rows},
     }
-    st.caption(model_info[whisper_model])
-    
-    st.divider()
-    
-    st.subheader("输出路径")
-    st.text(f"下载: {config.DOWNLOAD_PATH}")
-    st.text(f"输出: {config.OUTPUT_PATH}")
-    
-    st.divider()
-    
-    st.subheader("飞书配置")
-    feishu_enabled = st.checkbox(
-        "启用飞书同步",
-        value=bool(config.FEISHU_APP_ID),
-        help="需要配置飞书 API 密钥"
-    )
-    
-    st.divider()
-    
-    st.subheader("Cookies 配置")
-    
-    # 导入平台检测器
-    from utils.platform_detector import PlatformDetector, Platform
-    
-    # 选择平台
-    platform_options = {
-        "B站": Platform.BILIBILI,
-        "小红书": Platform.XIAOHONGSHU,
-        "抖音": Platform.DOUYIN
-    }
-    
-    selected_platform_name = st.selectbox(
-        "选择平台",
-        list(platform_options.keys()),
-        help="为不同平台配置独立的 cookies"
-    )
-    
-    selected_platform = platform_options[selected_platform_name]
-    cookies_file = PlatformDetector.get_cookies_file(selected_platform)
-    
-    # 初始化 session state
-    session_key = f'cookies_{selected_platform.value}'
-    if session_key not in st.session_state:
-        # 尝试从文件加载历史 cookies
-        cookies_path = Path(cookies_file)
-        if cookies_path.exists():
-            try:
-                st.session_state[session_key] = cookies_path.read_text(encoding='utf-8')
-            except:
-                st.session_state[session_key] = ""
-        else:
-            st.session_state[session_key] = ""
-    
-    # 显示 cookies 状态
-    if st.session_state[session_key]:
-        # 统计 cookies 数量
-        lines = st.session_state[session_key].split('\n')
-        cookie_count = sum(1 for line in lines if line.strip() and not line.startswith('#'))
-        st.success(f"✓ {selected_platform_name} Cookies 已配置（{cookie_count} 条）")
-    else:
-        st.info(f"ℹ️ {selected_platform_name} Cookies 未配置")
-    
-    # 显示所有平台状态
-    with st.expander("📊 所有平台状态"):
-        for name, platform in platform_options.items():
-            pf_cookies = PlatformDetector.get_cookies_file(platform)
-            if Path(pf_cookies).exists():
-                st.text(f"✅ {name}")
-            else:
-                st.text(f"❌ {name}")
-    
-    # Cookies 输入方式选择
-    input_method = st.radio(
-        "输入方式",
-        ["文本输入", "文件上传"],
-        horizontal=True,
-        key=f"cookies_input_method_{selected_platform.value}"
-    )
-    
-    if input_method == "文本输入":
-        # 文本框输入 cookies
-        cookies_input = st.text_area(
-            f"粘贴 {selected_platform_name} Cookies 内容",
-            value=st.session_state[session_key],
-            height=150,
-            placeholder="# Netscape HTTP Cookie File\n.bilibili.com\tTRUE\t/\tFALSE\t1735689600\tSESSDATA\tyour_session_data",
-            help=f"从浏览器开发者工具或扩展导出的 {selected_platform_name} cookies 内容",
-            key=f"cookies_text_input_{selected_platform.value}"
-        )
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button(f"💾 保存 {selected_platform_name} Cookies", use_container_width=True, key=f"save_{selected_platform.value}"):
-                if cookies_input.strip():
-                    # 保存到 session state
-                    st.session_state[session_key] = cookies_input
-                    # 保存到文件
-                    cookies_path = Path(cookies_file)
-                    cookies_path.write_text(cookies_input, encoding='utf-8')
-                    st.success(f"✓ {selected_platform_name} Cookies 已保存")
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Cookies 内容为空")
-        
-        with col2:
-            if st.button(f"🗑️ 清除 {selected_platform_name} Cookies", use_container_width=True, key=f"clear_{selected_platform.value}"):
-                st.session_state[session_key] = ""
-                cookies_path = Path(cookies_file)
-                if cookies_path.exists():
-                    cookies_path.unlink()
-                st.success(f"✓ {selected_platform_name} Cookies 已清除")
-                st.rerun()
-    
-    else:  # 文件上传
-        uploaded_cookies = st.file_uploader(
-            f"上传 {selected_platform_name} cookies.txt",
-            type=['txt'],
-            help=f"从浏览器导出的 {selected_platform_name} cookies 文件",
-            key=f"cookies_file_uploader_{selected_platform.value}"
-        )
-        
-        if uploaded_cookies:
-            cookies_content = uploaded_cookies.read().decode('utf-8')
-            # 保存到 session state
-            st.session_state[session_key] = cookies_content
-            # 保存到文件
-            cookies_path = Path(cookies_file)
-            cookies_path.write_text(cookies_content, encoding='utf-8')
-            st.success(f"✓ {selected_platform_name} Cookies 文件已上传")
-            st.rerun()
-    
-    # 使用指南
-    with st.expander("📖 如何获取 Cookies？"):
-        st.markdown("""
-        **方法 1：使用浏览器扩展（推荐）**
-        
-        Chrome:
-        1. 安装 "Get cookies.txt LOCALLY" 扩展
-        2. 访问网站（如 bilibili.com）并登录
-        3. 点击扩展图标，导出 cookies
-        4. 复制内容粘贴到上方文本框
-        
-        **方法 2：手动从浏览器复制**
-        
-        1. 打开开发者工具（F12）
-        2. 访问网站并登录
-        3. Application → Cookies
-        4. 复制所有 cookies
-        5. 转换为 Netscape 格式后粘贴
-        
-        **格式示例**：
-        ```
-        # Netscape HTTP Cookie File
-        .bilibili.com	TRUE	/	FALSE	1735689600	SESSDATA	xxx
-        .bilibili.com	TRUE	/	FALSE	1735689600	bili_jct	xxx
-        ```
-        
-        **提示**：
-        - Cookies 会自动保存，下次启动自动加载
-        - Cookies 过期后需要重新获取
-        - 建议使用测试账号
-        """)
-    
-    if st.button("🔄 重新加载配置"):
-        st.rerun()
 
-# 主界面
-tab1, tab2, tab3, tab4 = st.tabs(["📥 单个处理", "📦 批量处理", "📊 历史记录", "⏰ 定时任务"])
 
-with tab1:
-    st.header("单个视频处理")
-    
-    # URL 清理选项
-    col_url1, col_url2 = st.columns([4, 1])
-    with col_url2:
-        aggressive_clean = st.checkbox(
-            "深度清理",
-            value=False,
-            help="移除追踪参数（可能影响某些视频访问）"
-        )
-    
-    with col_url1:
-        url_input = st.text_input(
-            "视频链接",
-            placeholder="输入抖音/B站/小红书视频链接...",
-            disabled=st.session_state.processing,
-            key="video_url_input"
-        )
-    
-    # 自动清理 URL
-    url = url_input
-    if url_input:
-        from utils.url_cleaner import URLCleaner
-        from utils.platform_detector import PlatformDetector, Platform
-        
-        # 验证是否是有效的视频 URL
-        if not URLCleaner.is_valid_video_url(url_input):
-            st.error("⚠️ 输入的不是有效的视频链接，请检查")
-            st.info("提示：请输入完整的视频 URL，例如：https://www.bilibili.com/video/...")
-            url = None
-        else:
-            # 检测平台
-            platform = PlatformDetector.detect_platform(url_input)
-            platform_name = PlatformDetector.get_platform_name(platform)
-            
-            if platform == Platform.UNKNOWN:
-                st.error(f"⚠️ 该平台暂不支持")
-                st.info("当前支持的平台：B站、小红书、抖音")
-                url = None
-            else:
-                # 清理 URL（默认保守模式，只移除敏感信息）
-                cleaned_url = URLCleaner.clean_url(url_input, platform_name, aggressive=aggressive_clean)
-                
-                # 如果 URL 被清理了，显示提示
-                if cleaned_url != url_input:
-                    st.success(f"✨ 已自动清理 URL {'（深度清理）' if aggressive_clean else '（仅移除敏感信息）'}")
-                    with st.expander("查看清理详情"):
-                        st.text(f"原始 URL:\n{url_input}\n")
-                        st.text(f"清理后 URL:\n{cleaned_url}")
-                        removed = len(url_input) - len(cleaned_url)
-                        st.caption(f"移除了 {removed} 个字符")
-                
-                url = cleaned_url
-                
-                st.info(f"🎯 检测到平台: {platform_name}")
-                
-                # 提取视频 ID
-                video_id = URLCleaner.extract_video_id(url, platform_name)
-                if video_id:
-                    st.caption(f"视频 ID: {video_id}")
-                
-                # 检查是否有对应平台的 cookies
-                if not PlatformDetector.check_cookies_exists(platform):
-                    st.warning(f"⚠️ 未配置 {platform_name} Cookies，可能影响下载")
-    
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        process_btn = st.button(
-            "🚀 开始处理",
-            disabled=st.session_state.processing or not url,
-            type="primary"
-        )
-    
-    if process_btn and url:
-        # 再次检查平台
-        from utils.platform_detector import PlatformDetector, Platform
-        platform = PlatformDetector.detect_platform(url)
-        
-        if platform == Platform.UNKNOWN:
-            st.error("❌ 该平台暂不支持，无法处理")
-            st.info("当前支持的平台：B站、小红书、抖音")
-        else:
-            st.session_state.processing = True
-            
-            # 进度显示
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            def update_progress(message: str):
-                status_text.text(message)
-            
-            # 创建处理流水线（使用当前配置）
-            pipeline = ProcessingPipeline(
-                ai_provider=ai_provider,
-                enable_ai_polish=enable_ai_polish,
-                whisper_model=whisper_model
+def list_users(limit: int = 20, keyword: str = "") -> list[dict[str, Any]]:
+    """按关键字查询用户明细。"""
+
+    with SessionLocal() as session:
+        stmt = select(User)
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(
+                or_(User.username.like(like), User.email.like(like), User.display_name.like(like))
             )
-            
-            # 执行处理
-            try:
-                result = asyncio.run(
-                    pipeline.process(url, update_progress)
-                )
-                
-                progress_bar.progress(100)
-                
-                if result['success']:
-                    st.success("✅ 处理完成！")
-                    
-                    # 显示结果
-                    with st.expander("📋 视频信息", expanded=True):
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write(f"**标题**: {result['metadata']['title']}")
-                            st.write(f"**作者**: {result['metadata']['author']}")
-                        with col2:
-                            st.write(f"**日期**: {result['metadata']['upload_date']}")
-                            st.write(f"**飞书同步**: {'✅' if result['feishu_synced'] else '❌'}")
-                    
-                    with st.expander("📝 处理结果", expanded=True):
-                        content = result['processed_content']
-                        st.subheader(content['title'])
-                        st.info(content['summary'])
-                        
-                        st.write("**核心观点**:")
-                        for i, point in enumerate(content['core_points'], 1):
-                            st.write(f"{i}. {point}")
-                        
-                        st.write("**详细内容**:")
-                        st.write(content['corrected_text'])
-                        
-                        st.write("**金句**:")
-                        for sentence in content['golden_sentences']:
-                            st.markdown(f"> {sentence}")
-                        
-                        st.write("**标签**:", " ".join([f"`{tag}`" for tag in content['tags']]))
-                    
-                    # 下载按钮
-                    markdown_path = Path(result['markdown_path'])
-                    if markdown_path.exists():
-                        st.download_button(
-                            "📥 下载 Markdown",
-                            markdown_path.read_text(encoding='utf-8'),
-                            file_name=markdown_path.name,
-                            mime="text/markdown"
-                        )
-                else:
-                    error_msg = result.get('error', '未知错误')
-                    st.error(f"❌ 处理失败: {error_msg}")
-                    
-                    # 抖音特殊错误提示
-                    if platform == Platform.DOUYIN and ('Fresh cookies' in error_msg or 'Douyin' in error_msg):
-                        st.warning("⚠️ 抖音下载说明")
-                        st.markdown("""
-                        由于抖音的反爬虫机制极其严格，即使配置了有效的 Cookies，
-                        yt-dlp 也可能无法下载抖音视频。
-                        
-                        **建议使用以下替代方案：**
-                        
-                        1. **浏览器扩展下载（推荐）**
-                           - Video DownloadHelper
-                           - 猫抓（CoCoCut）
-                        
-                        2. **手机 APP 下载**
-                           - 使用抖音 APP 下载视频
-                           - 传输到电脑后处理
-                        
-                        3. **等待功能更新**
-                           - 关注 yt-dlp 更新
-                           - 抖音反爬虫机制可能随时变化
-                        
-                        详细说明请查看：`Douyin_Download_Solution.md`
-                        """)
-            
-            except Exception as e:
-                error_str = str(e)
-                st.error(f"❌ 发生错误: {error_str}")
-                
-                # 抖音特殊错误提示
-                if platform == Platform.DOUYIN and ('Fresh cookies' in error_str or 'Douyin' in error_str):
-                    st.warning("⚠️ 抖音下载说明")
-                    st.markdown("""
-                    由于抖音的反爬虫机制极其严格，暂时无法通过程序直接下载。
-                    
-                    **推荐替代方案：**
-                    - 使用浏览器扩展（Video DownloadHelper、猫抓）
-                    - 使用手机 APP 下载后传输
-                    
-                    详细说明：`Douyin_Download_Solution.md`
-                    """)
-            
-            finally:
-                st.session_state.processing = False
+        users = session.execute(stmt.order_by(User.created_at.desc(), User.id.desc()).limit(limit)).scalars().all()
 
-with tab2:
-    st.header("批量处理")
-    
-    urls_text = st.text_area(
-        "视频链接（每行一个）",
-        height=200,
-        placeholder="https://...\nhttps://...",
-        disabled=st.session_state.processing
-    )
-    
-    if st.button("🚀 批量处理", disabled=st.session_state.processing):
-        urls = [url.strip() for url in urls_text.split('\n') if url.strip()]
-        
-        if urls:
-            st.session_state.processing = True
-            st.info(f"准备处理 {len(urls)} 个视频...")
-            
-            # 创建处理流水线（使用当前配置）
-            pipeline = ProcessingPipeline(
-                ai_provider=ai_provider,
-                enable_ai_polish=enable_ai_polish,
-                whisper_model=whisper_model
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "display_name": user.display_name,
+            "table_id": user.table_id,
+            "is_active": user.is_active,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat(),
+        }
+        for user in users
+    ]
+
+
+def list_videos(limit: int = 30, keyword: str = "", status_filter: str = "全部") -> list[dict[str, Any]]:
+    """按状态和关键字查询视频明细。"""
+
+    with SessionLocal() as session:
+        stmt = select(Video)
+
+        if status_filter != "全部":
+            stmt = stmt.where(Video.status == status_filter)
+
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Video.title.like(like),
+                    Video.author.like(like),
+                    Video.url.like(like),
+                    Video.error_msg.like(like),
+                )
             )
-            
-            try:
-                results = asyncio.run(
-                    pipeline.process_batch(urls)
-                )
-                
-                success_count = sum(1 for r in results if isinstance(r, dict) and r.get('success'))
-                st.success(f"✅ 完成！成功: {success_count}/{len(urls)}")
-                
-                # 显示结果摘要
-                for i, result in enumerate(results, 1):
-                    if isinstance(result, dict) and result.get('success'):
-                        st.write(f"{i}. ✅ {result['metadata']['title']}")
-                    else:
-                        error = result if isinstance(result, Exception) else result.get('error', '未知错误')
-                        st.write(f"{i}. ❌ 失败: {error}")
-            
-            except Exception as e:
-                st.error(f"❌ 批量处理失败: {str(e)}")
-            
-            finally:
-                st.session_state.processing = False
 
-with tab3:
-    st.header("历史记录")
-    
-    # 列出已处理的文件
-    output_files = list(config.OUTPUT_PATH.glob("*.md"))
-    
-    if output_files:
-        st.write(f"共 {len(output_files)} 条记录")
-        
-        for file in sorted(output_files, key=lambda x: x.stat().st_mtime, reverse=True):
-            with st.expander(f"📄 {file.stem}"):
-                content = file.read_text(encoding='utf-8')
-                st.markdown(content)
-                
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    st.download_button(
-                        "下载",
-                        content,
-                        file_name=file.name,
-                        mime="text/markdown",
-                        key=f"download_{file.stem}"
-                    )
-    else:
-        st.info("暂无历史记录")
+        videos = session.execute(stmt.order_by(Video.created_at.desc(), Video.id.desc()).limit(limit)).scalars().all()
 
-with tab4:
-    st.header("⏰ 定时任务管理")
-    
-    st.markdown("""
-    定时任务会自动检查飞书表格中的空白链接（只有链接没有详细信息的记录），
-    并自动执行完整的处理流程。
-    """)
-    
-    # 检查飞书配置
-    feishu_configured = all([
-        config.FEISHU_APP_ID,
-        config.FEISHU_APP_SECRET,
-        config.FEISHU_BITABLE_APP_TOKEN,
-        config.FEISHU_BITABLE_TABLE_ID
-    ])
-    
-    if not feishu_configured:
-        st.error("⚠️ 飞书配置不完整，无法使用定时任务功能")
-        st.info("请在 .env 文件中配置: FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_BITABLE_APP_TOKEN, FEISHU_BITABLE_TABLE_ID")
-    else:
-        st.success("✅ 飞书配置已完成")
-        
-        # 获取定时任务状态
-        status = background_scheduler.get_status()
-        
-        # 后台定时任务控制
-        st.subheader("🤖 后台定时任务")
-        
-        col1, col2, col3 = st.columns([1, 1, 2])
-        
-        with col1:
-            if status['is_running']:
-                st.success("🟢 运行中")
-            else:
-                st.info("⚪ 未运行")
-        
-        with col2:
-            if status['is_running']:
-                st.metric("检查间隔", f"{status['check_interval_minutes']} 分钟")
-            else:
-                st.metric("检查间隔", "-")
-        
-        with col3:
-            if status['last_check_time']:
-                st.metric("上次检查", status['last_check_time'])
-            else:
-                st.metric("上次检查", "从未运行")
-        
-        # 显示上次结果
-        if status['last_result']:
-            result = status['last_result']
-            
-            # 总体统计
-            st.subheader("📊 处理统计")
-            col_a, col_b, col_c, col_d = st.columns(4)
-            with col_a:
-                st.metric("总计", result['total'])
-            with col_b:
-                st.metric("成功", result['success'])
-            with col_c:
-                st.metric("失败", result['failed'])
-            with col_d:
-                st.metric("耗时", f"{result['duration']:.1f}秒")
-            
-            # 子任务详情
-            if result.get('blank_total', 0) > 0 or result.get('raw_total', 0) > 0:
-                with st.expander("📋 详细统计", expanded=False):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**任务 1: 空白链接**")
-                        st.write(f"- 总计: {result.get('blank_total', 0)} 条")
-                        st.write(f"- 成功: {result.get('blank_success', 0)} 条")
-                        st.write(f"- 失败: {result.get('blank_failed', 0)} 条")
-                    
-                    with col2:
-                        st.markdown("**任务 2: 原始转录 AI 润色**")
-                        st.write(f"- 总计: {result.get('raw_total', 0)} 条")
-                        st.write(f"- 成功: {result.get('raw_success', 0)} 条")
-                        st.write(f"- 失败: {result.get('raw_failed', 0)} 条")
-        
-        st.divider()
-        
-        # 控制按钮
-        col_btn1, col_btn2, col_btn3 = st.columns(3)
-        
-        with col_btn1:
-            if not status['is_running']:
-                # 检查间隔选择
-                interval_options = {
-                    "1 分钟": 60,
-                    "5 分钟": 300,
-                    "10 分钟": 600,
-                    "30 分钟": 1800,
-                    "1 小时": 3600
-                }
-                selected_interval = st.selectbox(
-                    "检查间隔",
-                    list(interval_options.keys()),
-                    index=1  # 默认 5 分钟
-                )
-                
-                if st.button("▶️ 启动定时任务", type="primary", use_container_width=True):
-                    interval_seconds = interval_options[selected_interval]
-                    result = background_scheduler.start(check_interval=interval_seconds)
-                    
-                    if result['success']:
-                        st.success(result['message'])
-                        st.rerun()
-                    else:
-                        st.error(result['message'])
-            else:
-                if st.button("⏹️ 停止定时任务", type="secondary", use_container_width=True):
-                    result = background_scheduler.stop()
-                    
-                    if result['success']:
-                        st.success(result['message'])
-                        st.rerun()
-                    else:
-                        st.error(result['message'])
-        
-        with col_btn2:
-            if st.button("🔄 立即执行一次", disabled=st.session_state.processing, use_container_width=True):
-                st.session_state.processing = True
-                
-                with st.spinner("正在检查飞书表格..."):
-                    result = background_scheduler.execute_once()
-                    
-                    if result['success']:
-                        check_result = result['result']
-                        st.success("✅ 检查完成！")
-                        
-                        # 总体统计
-                        col_a, col_b, col_c, col_d = st.columns(4)
-                        with col_a:
-                            st.metric("总计", check_result['total'])
-                        with col_b:
-                            st.metric("成功", check_result['success'])
-                        with col_c:
-                            st.metric("失败", check_result['failed'])
-                        with col_d:
-                            st.metric("耗时", f"{check_result['duration']:.1f}秒")
-                        
-                        # 子任务详情
-                        if check_result.get('blank_total', 0) > 0 or check_result.get('raw_total', 0) > 0:
-                            st.markdown("**详细统计：**")
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                st.info(f"**空白链接**: {check_result.get('blank_total', 0)} 条 | "
-                                       f"成功 {check_result.get('blank_success', 0)} | "
-                                       f"失败 {check_result.get('blank_failed', 0)}")
-                            
-                            with col2:
-                                st.info(f"**原始转录润色**: {check_result.get('raw_total', 0)} 条 | "
-                                       f"成功 {check_result.get('raw_success', 0)} | "
-                                       f"失败 {check_result.get('raw_failed', 0)}")
-                        
-                        if check_result['total'] == 0:
-                            st.info("没有发现需要处理的记录")
-                        elif check_result['failed'] > 0:
-                            st.warning(f"有 {check_result['failed']} 条记录处理失败，请查看日志")
-                    else:
-                        st.error(f"❌ 检查失败: {result.get('message', '未知错误')}")
-                    
-                    st.session_state.processing = False
-                    st.rerun()
-        
-        with col_btn3:
-            if st.button("🔄 刷新状态", use_container_width=True):
-                st.rerun()
-        
-        st.divider()
-        
-        # 使用说明
-        st.subheader("📖 使用说明")
-        
-        with st.expander("💡 后台定时任务说明"):
-            st.markdown("""
-            **后台定时任务功能：**
-            
-            - ✅ 在 Streamlit 应用中运行，无需单独启动脚本
-            - ✅ 自动检查飞书表格中的空白链接
-            - ✅ 自动重新处理"原始转录"记录（AI 润色）
-            - ✅ 按设定的间隔自动执行处理
-            - ✅ 可随时启动/停止
-            - ✅ 实时查看运行状态和结果
-            
-            **两个子任务：**
-            
-            1. **空白链接处理**
-               - 检测：有链接但缺少标题/作者/总结
-               - 处理：完整流程（下载、转录、AI 分析）
-            
-            2. **原始转录 AI 润色**
-               - 检测：标签中含有"原始转录"
-               - 处理：只进行 AI 润色（不重新下载和转录）
-               - 原因：网络或 API 问题导致首次处理时未进行 AI 润色
-            
-            **使用步骤：**
-            
-            1. 选择检查间隔（1 分钟 ~ 1 小时）
-            2. 点击"启动定时任务"
-            3. 任务会在后台自动运行
-            4. 可以点击"立即执行一次"手动触发
-            5. 需要停止时点击"停止定时任务"
-            
-            **注意事项：**
-            
-            - 后台任务会随 Streamlit 应用一起运行
-            - 关闭浏览器不影响后台任务
-            - 停止 Streamlit 应用会自动停止后台任务
-            - 建议根据实际需求选择合适的检查间隔
-            
-            **推荐配置：**
-            
-            - 测试环境：1-5 分钟
-            - 个人使用：5-10 分钟
-            - 团队使用：10-30 分钟
-            - 低频使用：30-60 分钟
-            """)
-        
-        with st.expander("🔧 独立运行方式（可选）"):
-            st.markdown("""
-            如果需要独立运行定时任务（不依赖 Streamlit），可以使用：
-            
-            **方法 1: 独立脚本**
-            ```bash
-            python scheduler_app.py
-            ```
-            
-            **方法 2: 手动触发**
-            ```bash
-            python check_blank_links.py
-            ```
-            
-            **方法 3: 系统服务（Linux）**
-            ```bash
-            sudo systemctl start feishu-scheduler
-            ```
-            
-            详细说明请查看：`READM/定时任务使用指南.md`
-            """)
-        
-        with st.expander("📊 空白链接判断标准"):
-            st.markdown("""
-            系统会自动识别以下记录为"空白链接"：
-            
-            ✅ **必须满足：**
-            - 有原始链接字段
-            
-            ❌ **缺少以下任一项：**
-            - 标题
-            - 作者
-            - 一句话总结
-            
-            ❌ **处理状态不是：**
-            - "已完成"
-            - "处理中"
-            
-            **处理流程：**
-            1. 扫描飞书表格
-            2. 识别空白链接
-            3. 更新状态为"处理中"
-            4. 下载视频 → 提取音频 → 语音识别 → AI 分析
-            5. 更新飞书记录（标题、作者、总结等）
-            6. 状态更新为"已完成"或"失败"
-            """)
-        
-        # 查看日志
-        with st.expander("📄 查看最近日志"):
-            log_file = Path("logs/app.log")
-            if log_file.exists():
-                try:
-                    # 读取最后 50 行
-                    with open(log_file, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                        recent_logs = ''.join(lines[-50:])
-                    st.code(recent_logs, language='log')
-                except Exception as e:
-                    st.error(f"读取日志失败: {str(e)}")
-            else:
-                st.info("暂无日志文件")
+    return [
+        {
+            "id": video.id,
+            "user_id": video.user_id,
+            "title": video.title or "未命名视频",
+            "author": video.author or "未知作者",
+            "video_type": video.video_type,
+            "status": video.status,
+            "url": video.url,
+            "summary": video.summary,
+            "created_at": video.created_at.isoformat(),
+            "processed_at": video.processed_at.isoformat() if video.processed_at else "",
+            "error_msg": video.error_msg,
+        }
+        for video in videos
+    ]
 
-# 页脚
-st.markdown("---")
-st.markdown("💡 **提示**: 首次使用需配置 `.env` 文件中的 API 密钥")
+
+def get_user_detail(user_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            return None
+
+        video_count = session.execute(select(func.count(Video.id)).where(Video.user_id == user.id)).scalar_one()
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "display_name": user.display_name,
+            "table_id": user.table_id,
+            "is_active": user.is_active,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat(),
+            "video_count": video_count,
+        }
+
+
+def list_failed_videos(limit: int = 20) -> list[dict[str, Any]]:
+    """专门聚合最近失败任务，降低在全量明细里排障的成本。"""
+
+    with SessionLocal() as session:
+        videos = (
+            session.execute(
+                select(Video)
+                .where(Video.status == FAILED_STATUS)
+                .order_by(Video.processed_at.desc(), Video.created_at.desc(), Video.id.desc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+
+    return [
+        {
+            "id": video.id,
+            "user_id": video.user_id,
+            "title": video.title or "未命名视频",
+            "status": video.status,
+            "video_type": video.video_type,
+            "url": video.url,
+            "error_msg": video.error_msg or "未写入错误信息",
+            "created_at": video.created_at.isoformat(),
+            "processed_at": video.processed_at.isoformat() if video.processed_at else "",
+        }
+        for video in videos
+    ]
+
+
+def get_failed_error_summary(limit: int = 20) -> list[dict[str, Any]]:
+    """按错误原因汇总失败任务，便于判断是否为同类问题批量出现。"""
+
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(Video.error_msg, func.count(Video.id))
+            .where(Video.status == FAILED_STATUS)
+            .group_by(Video.error_msg)
+            .order_by(func.count(Video.id).desc(), Video.error_msg.asc())
+            .limit(limit)
+        ).all()
+
+    return [
+        {
+            "error_msg": error_msg or "未写入错误信息",
+            "count": count,
+        }
+        for error_msg, count in rows
+    ]
+
+
+def get_video_detail(video_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as session:
+        video = session.get(Video, video_id)
+        if video is None:
+            return None
+
+        return {
+            "id": video.id,
+            "user_id": video.user_id,
+            "url": video.url,
+            "title": video.title,
+            "author": video.author,
+            "summary": video.summary,
+            "core_points": video.core_points,
+            "corrected_text": video.corrected_text,
+            "golden_sentences": video.golden_sentences,
+            "tags": video.tags,
+            "video_type": video.video_type,
+            "status": video.status,
+            "markdown_content": video.markdown_content,
+            "error_msg": video.error_msg,
+            "created_at": video.created_at.isoformat(),
+            "processed_at": video.processed_at.isoformat() if video.processed_at else None,
+        }
+
+
+async def _pipeline_processor(url: str) -> dict[str, Any]:
+    """复用现有流水线处理数据库中的任务。"""
+
+    pipeline = ProcessingPipeline(
+        ai_provider=config.AI_PROVIDER,
+        enable_ai_polish=config.ENABLE_AI_POLISH,
+        whisper_model=config.WHISPER_MODEL,
+    )
+    return await pipeline.process(url, progress_callback=None, skip_feishu_sync=False)
+
+
+def run_scheduler_once(batch_size: int) -> dict[str, int]:
+    adapter = DatabaseWritebackAdapter(session_factory=SessionLocal)
+    scheduler = DatabaseScheduler(
+        adapter=adapter,
+        processor=_pipeline_processor,
+        recover_timeout_seconds=config.DB_SCHEDULER_RECOVER_TIMEOUT,
+    )
+    return asyncio.run(scheduler.run_once(batch_size=batch_size))
+
+
+def render_status_counts(status_counts: dict[str, int]) -> None:
+    ordered = [
+        (PENDING_STATUS, status_counts.get(PENDING_STATUS, 0)),
+        (PROCESSING_STATUS, status_counts.get(PROCESSING_STATUS, 0)),
+        (COMPLETED_STATUS, status_counts.get(COMPLETED_STATUS, 0)),
+        (FAILED_STATUS, status_counts.get(FAILED_STATUS, 0)),
+    ]
+    st.table([{"状态": name, "数量": count} for name, count in ordered])
+
+
+st.title("🛠️ 内部调试台")
+st.caption("当前页面仅面向本地开发和排障使用，用于检查后端、数据库、任务执行和环境配置。")
+
+health = fetch_backend_health()
+snapshot = get_dashboard_snapshot()
+
+overview_tab, database_tab, operations_tab, env_tab = st.tabs(["系统概览", "数据库明细", "任务触发", "环境配置"])
+
+with overview_tab:
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("总用户数", snapshot["total_users"], help="数据库中的用户总量")
+    col2.metric("活跃用户", snapshot["active_users"], help="当前 `is_active = true` 的用户数量")
+    col3.metric("总视频数", snapshot["total_videos"], help="数据库中的视频记录总量")
+    col4.metric("待处理任务", snapshot["pending_videos"], help="状态为待处理或处理中")
+
+    st.subheader("后端健康状态")
+    st.json(health)
+
+    st.subheader("任务状态分布")
+    render_status_counts(snapshot["status_counts"])
+
+with database_tab:
+    st.subheader("数据库明细查看")
+    st.caption("这里直接读取当前数据库，不依赖前端页面，适合确认用户、视频和错误信息是否真实入库。")
+
+    user_keyword_col, user_limit_col = st.columns([3, 1])
+    user_keyword = user_keyword_col.text_input("用户检索关键词", placeholder="用户名 / 邮箱 / 显示名")
+    user_limit = user_limit_col.number_input("用户数量", min_value=5, max_value=100, value=20)
+    st.dataframe(list_users(limit=int(user_limit), keyword=user_keyword), use_container_width=True)
+
+    with st.expander("查看单个用户原始详情"):
+        user_detail_id = st.number_input("输入用户 ID", min_value=1, step=1, value=1, key="user_detail_id")
+        if st.button("查询用户详情", key="query_user_detail"):
+            user_detail = get_user_detail(int(user_detail_id))
+            if user_detail is None:
+                st.warning("未找到对应的用户记录。")
+            else:
+                st.json(user_detail)
+
+    st.divider()
+
+    video_keyword_col, video_status_col, video_limit_col = st.columns([3, 2, 1])
+    video_keyword = video_keyword_col.text_input("视频检索关键词", placeholder="标题 / 作者 / URL / 错误信息")
+    video_status = video_status_col.selectbox(
+        "视频状态筛选",
+        options=["全部", PENDING_STATUS, PROCESSING_STATUS, COMPLETED_STATUS, FAILED_STATUS],
+        index=0,
+    )
+    video_limit = video_limit_col.number_input("视频数量", min_value=5, max_value=200, value=30)
+    st.dataframe(
+        list_videos(limit=int(video_limit), keyword=video_keyword, status_filter=video_status),
+        use_container_width=True,
+    )
+
+    with st.expander("查看单个视频原始详情"):
+        video_detail_id = st.number_input("输入视频 ID", min_value=1, step=1, value=1, key="video_detail_id")
+        if st.button("查询视频详情", key="query_video_detail"):
+            video_detail = get_video_detail(int(video_detail_id))
+            if video_detail is None:
+                st.warning("未找到对应的视频记录。")
+            else:
+                st.json(video_detail)
+
+with operations_tab:
+    st.subheader("手动触发数据库调度")
+    st.write("该操作会认领数据库中的待处理视频，并调用现有 `core.pipeline` 执行完整处理。")
+
+    batch_size = st.number_input("本次处理批量大小", min_value=1, max_value=20, value=config.DB_SCHEDULER_BATCH_SIZE)
+
+    if "last_scheduler_result" not in st.session_state:
+        st.session_state.last_scheduler_result = None
+
+    if st.button("执行一次调度", type="primary"):
+        with st.spinner("正在执行数据库调度..."):
+            st.session_state.last_scheduler_result = run_scheduler_once(batch_size=int(batch_size))
+
+    if st.session_state.last_scheduler_result:
+        st.success("调度已完成")
+        st.json(st.session_state.last_scheduler_result)
+
+    st.subheader("当前数据库状态快照")
+    render_status_counts(get_dashboard_snapshot()["status_counts"])
+
+    st.divider()
+    st.subheader("失败任务排障视图")
+    st.caption("集中查看最近失败任务、错误原因分布和单条失败详情，避免在全量明细里人工筛查。")
+
+    failed_limit_col, failed_detail_col = st.columns([1, 1])
+    failed_limit = failed_limit_col.number_input("最近失败任务数量", min_value=5, max_value=100, value=20)
+    failed_detail_id = failed_detail_col.number_input(
+        "失败任务 ID",
+        min_value=1,
+        step=1,
+        value=1,
+        key="failed_video_detail_id",
+    )
+
+    failed_videos = list_failed_videos(limit=int(failed_limit))
+    failed_error_summary = get_failed_error_summary()
+
+    failed_table_col, failed_summary_col = st.columns([2, 1])
+
+    with failed_table_col:
+        if failed_videos:
+            st.dataframe(failed_videos, use_container_width=True)
+        else:
+            st.info("当前没有失败任务，最近调度结果比较稳定。")
+
+    with failed_summary_col:
+        st.markdown("**高频错误汇总**")
+        if failed_error_summary:
+            st.dataframe(failed_error_summary, use_container_width=True, hide_index=True)
+        else:
+            st.success("当前没有可统计的失败错误。")
+
+    if st.button("查询失败任务详情", key="query_failed_video_detail"):
+        failed_detail = get_video_detail(int(failed_detail_id))
+        if failed_detail is None:
+            st.warning("未找到对应的视频记录。")
+        elif failed_detail["status"] != FAILED_STATUS:
+            st.info("该 ID 当前不是失败状态，以下仍展示原始详情供核对。")
+            st.json(failed_detail)
+        else:
+            # 单独高亮错误原因，避免在长 JSON 中不易发现真正的失败入口。
+            st.error(f"错误信息：{failed_detail['error_msg'] or '未写入错误信息'}")
+            st.json(failed_detail)
+
+with env_tab:
+    st.subheader("当前运行配置")
+    st.code(
+        "\n".join(
+            [
+                f"API_BASE_URL={config.API_BASE_URL}",
+                f"DATABASE_URL={DATABASE_URL}",
+                f"WHISPER_MODEL={config.WHISPER_MODEL}",
+                f"AI_PROVIDER={config.AI_PROVIDER}",
+                f"ENABLE_AI_POLISH={config.ENABLE_AI_POLISH}",
+                f"FEISHU_ENABLED={bool(config.FEISHU_APP_ID and config.FEISHU_APP_SECRET)}",
+                f"DB_SCHEDULER_BATCH_SIZE={config.DB_SCHEDULER_BATCH_SIZE}",
+            ]
+        ),
+        language="text",
+    )
+
+    st.subheader("第三方配置状态")
+    st.table(
+        [
+            {"配置项": "OpenAI", "状态": "已配置" if config.OPENAI_API_KEY else "未配置"},
+            {"配置项": "Gemini", "状态": "已配置" if config.GEMINI_API_KEY else "未配置"},
+            {"配置项": "Kimi", "状态": "已配置" if config.KIMI_API_KEY else "未配置"},
+            {"配置项": "飞书", "状态": "已配置" if config.FEISHU_APP_ID and config.FEISHU_APP_SECRET else "未配置"},
+        ]
+    )

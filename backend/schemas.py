@@ -1,81 +1,80 @@
-from datetime import datetime
+from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from backend.video_url import normalize_video_url
 
 
-class UserBase(BaseModel):
-    username: str
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
     email: EmailStr
-    display_name: str
+    display_name: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=6, max_length=128)
 
 
-class UserRegisterRequest(UserBase):
-    password: str = Field(min_length=6)
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
-class UserLoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-class UserResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class UserDTO(BaseModel):
     user_id: str
     username: str
     display_name: str
-    table_id: str = ""
+    table_id: str
 
 
 class LoginResponse(BaseModel):
     token: str
-    user: UserResponse
-
-
-class MessageResponse(BaseModel):
-    success: bool
-    message: str
+    user: UserDTO
 
 
 class VideoSubmitRequest(BaseModel):
-    url: str
+    url: str = Field(min_length=1)
     table_id: str | None = ""
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        """在进入业务逻辑前完成 URL 归一化。"""
+
+        return normalize_video_url(value)
 
 
 class VideoSubmitResponse(BaseModel):
     success: bool
     record_id: str
     status: str
-    estimated_time: str | None = None
-    message: str | None = None
+    estimated_time: str | None
+    message: str | None
 
 
-class VideoRecordResponse(BaseModel):
+class VideoRecordDTO(BaseModel):
     id: str
-    title: str = ""
-    author: str = ""
+    title: str
+    author: str
     url: str
-    summary: str = ""
-    core_points: list[str] = Field(default_factory=list)
-    corrected_text: str = ""
-    golden_sentences: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
-    video_type: str = "其他"
+    summary: str
+    core_points: list[str]
+    corrected_text: str
+    golden_sentences: list[str]
+    tags: list[str]
+    video_type: str
     status: str
-    markdown_content: str = ""
+    markdown_content: str
     created_at: str
-    processed_at: str | None = None
+    processed_at: str | None
 
 
 class VideoListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-    items: list[VideoRecordResponse]
+    items: list[VideoRecordDTO]
     has_more: bool
 
 
-class TypeStatResponse(BaseModel):
+class TypeStatDTO(BaseModel):
     video_type: str
     count: int
 
@@ -86,27 +85,30 @@ class VideoOverviewResponse(BaseModel):
     pending: int
 
 
-class UserAdminResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class AdminUserDTO(BaseModel):
     id: int
     username: str
-    email: EmailStr
+    email: str
     display_name: str
     is_active: bool
     is_admin: bool
-    created_at: datetime
+    created_at: str
 
 
-class UserAdminCreateRequest(BaseModel):
-    username: str
-    email: EmailStr
-    display_name: str
-    password: str = Field(min_length=6)
-    is_admin: bool = False
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    active_users: int
+    total_videos: int
+    pending_videos: int
 
 
-class UserAdminUpdateRequest(BaseModel):
-    display_name: str | None = None
-    is_active: bool | None = None
-    is_admin: bool | None = None
+class CleanupResponse(BaseModel):
+    success: bool
+    cleaned_records: int
+    days: int
+
+
+class HealthResponse(BaseModel):
+    status: str
+    database_url: str
+    service: str
