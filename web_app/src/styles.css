@@ -83,6 +83,16 @@ textarea {
   backdrop-filter: blur(8px);
 }
 
+.page-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.section-block {
+  display: grid;
+  gap: 8px;
+}
+
 .section-header,
 .history-toolbar,
 .pagination-bar,
@@ -187,6 +197,32 @@ textarea {
   border: 1px dashed #d6deeb;
   border-radius: 16px;
   background: #f9fbff;
+}
+
+.state-panel {
+  padding: 18px;
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.loading-panel {
+  background: linear-gradient(135deg, #eef4ff 0%, #f8fbff 100%);
+  border: 1px solid #d7e4ff;
+}
+
+.error-panel {
+  background: linear-gradient(135deg, #fff2f2 0%, #fff8f8 100%);
+  border: 1px solid #f3c8c8;
+}
+
+.empty-panel {
+  background: linear-gradient(135deg, #f8fbff 0%, #fcfdff 100%);
+  border: 1px dashed #d6deeb;
+}
+
+.compact-panel {
+  padding: 16px;
 }
 
 .markdown-preview {

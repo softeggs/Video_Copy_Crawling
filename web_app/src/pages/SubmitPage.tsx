@@ -55,9 +55,12 @@ export function SubmitPage() {
 
   return (
     <div className="page-grid">
-      <form className="card" onSubmit={handleSubmit}>
-        <h2>提交视频链接</h2>
-        <p>支持粘贴完整 `http(s)` 链接，也支持缺省协议的域名链接。</p>
+      <form className="card page-stack" onSubmit={handleSubmit}>
+        <div className="section-block">
+          <h2>提交视频链接</h2>
+          <p>支持粘贴完整 `http(s)` 链接，也支持缺省协议的域名链接。</p>
+        </div>
+
         <textarea
           placeholder="例如：https://www.bilibili.com/video/BV1xx411c7mD"
           rows={4}
@@ -82,20 +85,41 @@ export function SubmitPage() {
         {feedback ? <p className={`${feedback.tone}-text`}>{feedback.text}</p> : null}
       </form>
 
-      <section className="card">
-        <h2>类型统计</h2>
-        {statsQuery.isLoading ? <p>加载中...</p> : null}
-        {statsQuery.isError ? <p className="error-text">统计加载失败，请稍后刷新。</p> : null}
-        {statsQuery.data?.length ? (
-          statsQuery.data.map((item) => (
-            <div className="stat-row" key={item.video_type}>
-              <span>{item.video_type}</span>
-              <strong>{item.count}</strong>
-            </div>
-          ))
-        ) : (
-          !statsQuery.isLoading && <p className="muted-text">当前还没有可统计的视频类型数据。</p>
-        )}
+      <section className="card page-stack">
+        <div className="section-block">
+          <h2>类型统计</h2>
+          <p className="muted-text">用于快速查看当前账号下的视频类型分布。</p>
+        </div>
+
+        {statsQuery.isLoading ? (
+          <div className="state-panel loading-panel">
+            <strong>正在加载类型统计</strong>
+            <p className="muted-text">稍后会展示当前账号下的类型分布数据。</p>
+          </div>
+        ) : null}
+
+        {statsQuery.isError ? (
+          <div className="state-panel error-panel">
+            <strong>类型统计加载失败</strong>
+            <p className="muted-text">不影响提交主流程，但当前无法展示统计信息。</p>
+          </div>
+        ) : null}
+
+        {!statsQuery.isLoading && !statsQuery.isError && !statsQuery.data?.length ? (
+          <div className="state-panel empty-panel compact-panel">
+            <strong>还没有可统计的视频数据</strong>
+            <p className="muted-text">先提交一条链接并完成处理后，这里就会出现分布结果。</p>
+          </div>
+        ) : null}
+
+        {statsQuery.data?.length
+          ? statsQuery.data.map((item) => (
+              <div className="stat-row" key={item.video_type}>
+                <span>{item.video_type}</span>
+                <strong>{item.count}</strong>
+              </div>
+            ))
+          : null}
       </section>
     </div>
   );
