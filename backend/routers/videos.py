@@ -7,15 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.constants import DEFAULT_ESTIMATED_TIME, PENDING_LIKE_STATUSES, PENDING_STATUS
+from backend.constants import (
+    DEFAULT_ESTIMATED_TIME,
+    PENDING_LIKE_STATUSES,
+    PENDING_STATUS,
+    STAGE_LABELS,
+    STAGE_COMPLETED,
+)
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models import User, Video
 from backend.schemas import (
+    FavoriteRequest,
+    FavoriteResponse,
     TypeStatDTO,
     VideoListResponse,
     VideoOverviewResponse,
     VideoRecordDTO,
+    VideoStatusDTO,
     VideoSubmitRequest,
     VideoSubmitResponse,
 )
@@ -45,6 +54,11 @@ def _to_video_dto(video: Video) -> VideoRecordDTO:
         markdown_content=video.markdown_content,
         created_at=_isoformat(video.created_at) or "",
         processed_at=_isoformat(video.processed_at),
+        is_favorited=video.is_favorited,
+        processing_stage=video.processing_stage,
+        processing_detail=video.processing_detail,
+        estimated_seconds_remaining=video.estimated_seconds_remaining,
+        last_stage_update_at=_isoformat(video.last_stage_update_at),
     )
 
 
@@ -133,3 +147,54 @@ def get_video(
     if video is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
     return _to_video_dto(video)
+
+
+# ---------- P3 新增记录能力接口 ----------
+
+
+@router.delete("/{video_id}")
+def delete_video(
+    video_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    video = db.execute(select(Video).where(Video.id == video_id, Video.user_id == user.id)).scalars().first()
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    db.delete(video)
+    db.commit()
+    return {"deleted": str(video_id)}
+
+
+@router.post("/{video_id}/favorite", response_model=FavoriteResponse)
+def toggle_favorite(
+    video_id: int,
+    payload: FavoriteRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> FavoriteResponse:
+    video = db.execute(select(Video).where(Video.id == video_id, Video.user_id == user.id)).scalars().first()
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    video.is_favorited = payload.is_favorited
+    db.commit()
+    return FavoriteResponse(id=str(video_id), is_favorited=video.is_favorited)
+
+
+@router.get("/{video_id}/status", response_model=VideoStatusDTO)
+def get_video_status(
+    video_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> VideoStatusDTO:
+    video = db.execute(select(Video).where(Video.id == video_id, Video.user_id == user.id)).scalars().first()
+    if video is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    return VideoStatusDTO(
+        id=str(video_id),
+        status=video.status,
+        processing_stage=video.processing_stage,
+        processing_detail=video.processing_detail,
+        estimated_seconds_remaining=video.estimated_seconds_remaining,
+        last_stage_update_at=_isoformat(video.last_stage_update_at),
+    )

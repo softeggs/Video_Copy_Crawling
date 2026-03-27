@@ -9,7 +9,17 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from backend.constants import COMPLETED_STATUS, DEFAULT_VIDEO_TYPE, FAILED_STATUS, PENDING_STATUS, PROCESSING_STATUS
+from backend.constants import (
+    COMPLETED_STATUS,
+    DEFAULT_VIDEO_TYPE,
+    FAILED_STATUS,
+    PENDING_STATUS,
+    PROCESSING_STATUS,
+    STAGE_COMPLETED,
+    STAGE_FAILED,
+    STAGE_LABELS,
+    STAGE_QUEUED,
+)
 from backend.models import Video
 
 ProcessorCallable = Callable[[str], Awaitable[dict[str, Any]]]
@@ -41,7 +51,14 @@ class DatabaseWritebackAdapter:
             result = session.execute(
                 update(Video)
                 .where(Video.id == video_id, Video.status == PENDING_STATUS)
-                .values(status=PROCESSING_STATUS, processed_at=claimed_at, error_msg="")
+                .values(
+                    status=PROCESSING_STATUS,
+                    processed_at=claimed_at,
+                    error_msg="",
+                    processing_stage=STAGE_QUEUED,
+                    processing_detail=STAGE_LABELS.get(STAGE_QUEUED, "排队中"),
+                    last_stage_update_at=claimed_at,
+                )
             )
             session.commit()
             return result.rowcount == 1
@@ -77,6 +94,8 @@ class DatabaseWritebackAdapter:
             video.status = COMPLETED_STATUS
             video.error_msg = ""
             video.processed_at = utc_now()
+            video.processing_stage = STAGE_COMPLETED
+            video.processing_detail = STAGE_LABELS.get(STAGE_COMPLETED, "已完成")
             session.commit()
 
     def mark_failure(self, video_id: int, error_msg: str) -> None:
@@ -88,6 +107,8 @@ class DatabaseWritebackAdapter:
             video.status = FAILED_STATUS
             video.error_msg = error_msg
             video.processed_at = utc_now()
+            video.processing_stage = STAGE_FAILED
+            video.processing_detail = error_msg[:200]
             session.commit()
 
     def recover_stuck_processing(self, timeout_seconds: int, now: datetime | None = None) -> list[int]:

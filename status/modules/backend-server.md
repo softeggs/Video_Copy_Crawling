@@ -15,36 +15,30 @@
 - 固化公开接口合同：`/auth`、`/videos`、`/admin`、`/health`
 - 建立 Alembic 配置和首个迁移脚本
 - 通过认证、视频、管理、调度四组后端回归测试
+- P3 新增 videos 表收藏与处理中状态字段
+- P3 新增 `shortcut_keys` 表
+- P3 新增记录能力接口（删除/收藏/状态轮询）
+- P3 新增快捷指令密钥接口（生成/列表/吊销/快捷提交）
+- P3 Alembic 新增迁移脚本
+- `db_scheduler` 认领/成功/失败时写入 `processing_stage`
 
 ## 未完成
 
-- 为 `videos` 表新增收藏与处理中状态相关字段
-- 新增快捷指令密钥表
-- 新增删除、收藏、处理中状态与快捷指令接口
-- 为调度流程写入阶段状态和预计时间
+- 为调度流程写入详细阶段和预计时间（流水线侧尚未接入）
 - 补充服务器迁移说明
 - 后续接入 PostgreSQL 运行验证
-
-## 验证证据
-
-- `pytest -q test/test_backend_auth.py`
-- `pytest -q test/test_backend_videos.py`
-- `pytest -q test/test_backend_admin.py`
-- `pytest -q test/test_db_scheduler.py`
-- `alembic -c alembic.ini upgrade head`
 
 ## 当前难点
 
 - 当前机器同时存在 `8001` 旧服务和 `8002` 新后端，联调必须统一以 `8002` 为准
-- 快捷指令密钥需要单独建表并存储哈希，不能走明文口令方案
+- 流水线侧尚未接入 `update_processing_stage`，处理中状态暂时依赖 db_scheduler 写入
 - 处理中状态展示需要后端提供阶段、详情和预计时间，不能只靠一列状态字符串
 
 ## 下一步任务
 
-- 先落数据库字段与快捷指令密钥表
-- 再落删除、收藏、处理中状态与快捷指令接口
-- 为 Web 接入提供第一轮验证接口
+- 后端能力已全部落地，等待 Web 接入验证
+- 如流水线侧需要接 `update_processing_stage`，再单独跟进
 
 ## 最后更新
 
-2026-03-26
+2026-03-27

@@ -30,6 +30,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     videos: Mapped[list["Video"]] = relationship("Video", back_populates="user", cascade="all, delete-orphan")
+    shortcut_keys: Mapped[list["ShortcutKey"]] = relationship("ShortcutKey", back_populates="user", cascade="all, delete-orphan")
 
 
 class Video(Base):
@@ -52,6 +53,13 @@ class Video(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True, nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # P3 新增字段
+    is_favorited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    processing_stage: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    processing_detail: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    estimated_seconds_remaining: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_stage_update_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     user: Mapped[User] = relationship("User", back_populates="videos")
 
     def apply_processed_payload(self, payload: dict[str, Any], author: str, markdown_content: str) -> None:
@@ -66,4 +74,39 @@ class Video(Base):
         self.tags = list(payload.get("tags", []))
         self.video_type = str(payload.get("video_type", self.video_type or DEFAULT_VIDEO_TYPE))
         self.markdown_content = markdown_content
+        self.processing_stage = ""
+        self.processing_detail = ""
+        self.estimated_seconds_remaining = None
+        self.last_stage_update_at = None
+
+    def update_processing_stage(
+        self,
+        stage: str,
+        detail: str,
+        estimated_seconds: int | None = None,
+    ) -> None:
+        """更新处理阶段信息。"""
+
+        self.processing_stage = stage
+        self.processing_detail = detail
+        self.estimated_seconds_remaining = estimated_seconds
+        self.last_stage_update_at = utc_now()
+
+
+class ShortcutKey(Base):
+    """快捷指令密钥表。"""
+
+    __tablename__ = "shortcut_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship("User", back_populates="shortcut_keys")
 
