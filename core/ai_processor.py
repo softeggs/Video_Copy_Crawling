@@ -2,6 +2,7 @@ import asyncio
 import json
 from typing import Dict, Optional
 
+import httpx
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
@@ -101,6 +102,8 @@ class AIProcessor:
                     openai_kwargs["base_url"] = config.OPENAI_BASE_URL
                     logger.info(f"Using OpenAI relay API: {config.OPENAI_BASE_URL}")
 
+                # 显式关闭环境代理继承，避免被系统里错误的 127.0.0.1:9 代理污染。
+                openai_kwargs["http_client"] = httpx.AsyncClient(trust_env=False)
                 self.openai_client = AsyncOpenAI(**openai_kwargs)
                 self.llm = None
                 self.current_model = config.OPENAI_MODEL

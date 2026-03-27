@@ -1,5 +1,7 @@
 # 环境变量
 # .env
+# 调试文件
+*.log
 
 # Python
 __pycache__/

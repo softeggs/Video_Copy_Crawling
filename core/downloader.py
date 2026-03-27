@@ -207,6 +207,9 @@ class VideoDownloader:
                 'fragment_retries': 5,
                 # 跳过不可用的片段
                 'skip_unavailable_fragments': True,
+                # 当前联调环境存在无效系统代理变量（127.0.0.1:9），这里显式禁用代理继承，
+                # 避免 yt-dlp 因读取环境代理而导致下载前就失败。
+                'proxy': '',
             }
             
             # 如果有 cookies 文件，使用它

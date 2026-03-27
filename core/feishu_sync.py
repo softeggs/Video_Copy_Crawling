@@ -3,6 +3,7 @@ from lark_oapi.api.bitable.v1 import *
 from typing import Dict
 from utils.logger import logger
 from utils.config import config
+from utils.network import disable_proxy_env
 
 class FeishuSync:
     def __init__(self):
@@ -69,7 +70,8 @@ class FeishuSync:
                     .build()) \
                 .build()
             
-            response = self.client.bitable.v1.app_table_record.create(request)
+            with disable_proxy_env():
+                response = self.client.bitable.v1.app_table_record.create(request)
             
             if not response.success():
                 logger.error(f"飞书同步失败: {response.code} - {response.msg}")
@@ -101,7 +103,8 @@ class FeishuSync:
                     .build()) \
                 .build()
             
-            response = self.client.bitable.v1.app_table_record.update(request)
+            with disable_proxy_env():
+                response = self.client.bitable.v1.app_table_record.update(request)
             return response.success()
             
         except Exception as e:
@@ -117,7 +120,8 @@ class FeishuSync:
                 .record_id(record_id) \
                 .build()
 
-            response = self.client.bitable.v1.app_table_record.delete(request)
+            with disable_proxy_env():
+                response = self.client.bitable.v1.app_table_record.delete(request)
             return response.success()
         except Exception as e:
             logger.error(f"????????: {str(e)}")

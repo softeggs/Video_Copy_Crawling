@@ -5,6 +5,7 @@ import requests
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 from utils.logger import logger
+from utils.network import create_direct_requests_session
 
 class APIBalanceChecker:
     """API Key 余额检查器"""
@@ -19,6 +20,7 @@ class APIBalanceChecker:
         self.base_url = base_url.rstrip('/')
         # 移除 /v1 的版本用于旧接口
         self.base_url_no_v1 = self.base_url.replace('/v1', '')
+        self.session = create_direct_requests_session()
     
     def check_subscription(self, api_key: str) -> Optional[Dict]:
         """查询订阅信息（额度、过期时间等）
@@ -38,7 +40,7 @@ class APIBalanceChecker:
             
             logger.info(f"查询订阅信息: {api_key[:20]}...")
             
-            response = requests.get(
+            response = self.session.get(
                 url,
                 timeout=10,
                 headers={
@@ -99,7 +101,7 @@ class APIBalanceChecker:
             
             logger.info(f"查询使用量: {api_key[:20]}... (最近 {days} 天)")
             
-            response = requests.get(
+            response = self.session.get(
                 url,
                 params=params,
                 timeout=10,
@@ -228,7 +230,7 @@ class APIBalanceChecker:
             
             logger.info(f"查询调用记录: {api_key[:20]}...")
             
-            response = requests.get(
+            response = self.session.get(
                 url,
                 params=params,
                 timeout=10,
@@ -418,6 +420,7 @@ class KimiBalanceChecker:
             api_key: Kimi API Key
         """
         self.api_key = api_key
+        self.session = create_direct_requests_session()
     
     def check_balance(self) -> Optional[Dict]:
         """查询 Kimi API 余额
@@ -440,7 +443,7 @@ class KimiBalanceChecker:
             
             logger.info(f"查询 Kimi 余额: {self.api_key[:15]}...")
             
-            response = requests.get(
+            response = self.session.get(
                 url,
                 timeout=10,
                 headers={
