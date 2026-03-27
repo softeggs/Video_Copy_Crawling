@@ -10,6 +10,7 @@ enum AppServiceError: LocalizedError, Equatable {
     case serverError(String)
     case decodingError
     case paginationStateUnavailable
+    case notSupported(feature: String)
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +32,8 @@ enum AppServiceError: LocalizedError, Equatable {
             return "响应数据解析失败。"
         case .paginationStateUnavailable:
             return "分页状态不可用，请下拉刷新后重试。"
+        case .notSupported(let feature):
+            return "\(feature)仅在统一后端模式下可用，当前飞书直连模式不支持该功能。"
         }
     }
 }

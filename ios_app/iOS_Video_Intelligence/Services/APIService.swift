@@ -86,6 +86,23 @@ private struct VideoSubmitRequestPayload: Encodable {
     }
 }
 
+private struct FavoriteRequestPayload: Encodable {
+    let isFavorited: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isFavorited = "is_favorited"
+    }
+}
+
+private struct ShortcutSubmitRequestPayload: Encodable {
+    let key: String
+    let url: String
+}
+
+private struct CreateShortcutKeyPayload: Encodable {
+    let name: String
+}
+
 final class APIService {
     static let shared = APIService()
 
@@ -158,6 +175,66 @@ final class APIService {
             path: "/videos/overview",
             method: "GET",
             token: token
+        )
+    }
+
+    // MARK: - P3 记录能力
+
+    func deleteVideo(recordId: String, token: String) async throws {
+        let _: [String: String] = try await request(
+            path: "/videos/\(recordId)",
+            method: "DELETE",
+            token: token
+        )
+    }
+
+    func toggleFavorite(recordId: String, isFavorited: Bool, token: String) async throws -> FavoriteResponse {
+        try await request(
+            path: "/videos/\(recordId)/favorite",
+            method: "POST",
+            token: token,
+            body: FavoriteRequestPayload(isFavorited: isFavorited)
+        )
+    }
+
+    func fetchVideoStatus(recordId: String, token: String) async throws -> VideoStatusResponse {
+        try await request(
+            path: "/videos/\(recordId)/status",
+            method: "GET",
+            token: token
+        )
+    }
+
+    // MARK: - P3 快捷指令密钥
+
+    func listShortcutKeys(token: String) async throws -> [ShortcutKeySummary] {
+        try await request(path: "/shortcut-keys", method: "GET", token: token)
+    }
+
+    func createShortcutKey(name: String, token: String) async throws -> CreateShortcutKeyResponse {
+        try await request(
+            path: "/shortcut-keys",
+            method: "POST",
+            token: token,
+            body: CreateShortcutKeyPayload(name: name)
+        )
+    }
+
+    func revokeShortcutKey(keyId: Int, token: String) async throws -> Bool {
+        let data: [String: Bool] = try await request(
+            path: "/shortcut-keys/\(keyId)",
+            method: "DELETE",
+            token: token
+        )
+        return data["revoked"] ?? false
+    }
+
+    func shortcutSubmit(key: String, url: String) async throws -> ShortcutSubmitResponse {
+        try await request(
+            path: "/shortcut-submit",
+            method: "POST",
+            authenticated: false,
+            body: ShortcutSubmitRequestPayload(key: key, url: url)
         )
     }
 

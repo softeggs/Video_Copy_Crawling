@@ -67,14 +67,11 @@ struct HistoryView: View {
                     } else {
                         List {
                             ForEach(filteredVideos) { video in
-                                ZStack {
-                                    NavigationLink(destination: DetailView(video: video).environmentObject(authManager)) {
-                                        EmptyView()
-                                    }
-                                    .opacity(0)
-
-                                    VideoCard(video: video)
-                                }
+                                RecordRowView(
+                                    video: video,
+                                    onDelete: { deleteRecord(video) },
+                                    onFavoriteToggle: { toggleFavorite(video) }
+                                )
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -189,6 +186,74 @@ struct HistoryView: View {
         return loadedRecords
     }
 
+    private func deleteRecord(_ video: VideoRecord) {
+        guard let token = authManager.token else { return }
+
+        // 乐观更新：立即从列表移除
+        withAnimation {
+            allVideos.removeAll { $0.id == video.id }
+        }
+
+        Task {
+            do {
+                try await videoRepository.deleteRecord(token: token, recordId: video.id)
+            } catch {
+                // 删除失败，恢复记录
+                await MainActor.run {
+                    if !allVideos.contains(where: { $0.id == video.id }) {
+                        allVideos.insert(video, at: 0)
+                    }
+                    errorMessage = "删除失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func toggleFavorite(_ video: VideoRecord) {
+        guard let token = authManager.token else { return }
+        let newFavorited = !video.isFavorited
+
+        // 乐观更新：立即更新本地状态
+        if let index = allVideos.firstIndex(where: { $0.id == video.id }) {
+            let updated = VideoRecord(
+                id: video.id,
+                title: video.title,
+                author: video.author,
+                url: video.url,
+                summary: video.summary,
+                corePoints: video.corePoints,
+                correctedText: video.correctedText,
+                goldenSentences: video.goldenSentences,
+                tags: video.tags,
+                videoType: video.videoType,
+                status: video.status,
+                markdownContent: video.markdownContent,
+                createdAt: video.createdAt,
+                processedAt: video.processedAt,
+                isFavorited: newFavorited,
+                processingStage: video.processingStage,
+                processingDetail: video.processingDetail,
+                estimatedSecondsRemaining: video.estimatedSecondsRemaining,
+                lastStageUpdateAt: video.lastStageUpdateAt
+            )
+            allVideos[index] = updated
+        }
+
+        Task {
+            do {
+                _ = try await videoRepository.toggleFavorite(token: token, recordId: video.id, isFavorited: newFavorited)
+            } catch {
+                // 失败则恢复原状态
+                await MainActor.run {
+                    if let index = allVideos.firstIndex(where: { $0.id == video.id }) {
+                        allVideos[index] = video
+                    }
+                    errorMessage = "收藏操作失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func sortComparator(lhs: VideoRecord, rhs: VideoRecord) -> Bool {
         switch selectedSort {
         case .newestFirst:
@@ -219,10 +284,75 @@ struct HistoryView: View {
     }
 }
 
+// MARK: - RecordRowView
+
+struct RecordRowView: View {
+    let video: VideoRecord
+    let onDelete: () -> Void
+    let onFavoriteToggle: () -> Void
+
+    @State private var showDeleteConfirm = false
+
+    var body: some View {
+        ZStack {
+            NavigationLink(destination: DetailView(video: video).environmentObject(AuthManager.shared)) {
+                EmptyView()
+            }
+            .opacity(0)
+
+            VideoCard(video: video)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+
+            Button {
+                onFavoriteToggle()
+            } label: {
+                Label(
+                    video.isFavorited ? "取消收藏" : "收藏",
+                    systemImage: video.isFavorited ? "star.slash" : "star.fill"
+                )
+            }
+            .tint(.yellow)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                onFavoriteToggle()
+            } label: {
+                Label(
+                    video.isFavorited ? "取消收藏" : "收藏",
+                    systemImage: video.isFavorited ? "star.slash.fill" : "star.fill"
+                )
+            }
+            .tint(.yellow)
+        }
+        .confirmationDialog(
+            "确认删除",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                onDelete()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("确定要删除「\(video.title)」吗？此操作无法撤销。")
+        }
+    }
+}
+
+// MARK: - VideoCard
+
 struct VideoCard: View {
     let video: VideoRecord
 
-    var statusColor: Color {
+    private var pendingLikeStatuses: Set<String> { ["待处理", "处理中"] }
+
+    private var statusColor: Color {
         switch video.status {
         case "已完成": return Color(hex: "52C41A")
         case "处理中": return Color(hex: "1890FF")
@@ -231,26 +361,51 @@ struct VideoCard: View {
         }
     }
 
+    private var isProcessing: Bool {
+        pendingLikeStatuses.contains(video.status)
+    }
+
+    private var stageLabel: String {
+        guard isProcessing, !video.processingStage.isEmpty else { return "" }
+        return ProcessingStageLabel.label(for: video.processingStage)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            // 第一行：标题 + 收藏图标 + 状态标签
+            HStack(alignment: .top) {
                 Text(video.title)
                     .font(.headline)
                     .lineLimit(1)
                     .foregroundColor(Color(hex: "1F2329"))
 
+                if video.isFavorited {
+                    Image(systemName: "star.fill")
+                        .font(.caption)
+                        .foregroundColor(.yellow)
+                }
+
                 Spacer()
 
-                Text(video.status)
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(statusColor.opacity(0.1))
-                    .foregroundColor(statusColor)
-                    .cornerRadius(4)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(video.status)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(statusColor.opacity(0.1))
+                        .foregroundColor(statusColor)
+                        .cornerRadius(4)
+
+                    if isProcessing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 50)
+                    }
+                }
             }
 
+            // 第二行：作者 + 类型
             HStack {
                 Image(systemName: "person.fill")
                     .font(.caption)
@@ -266,11 +421,41 @@ struct VideoCard: View {
             }
             .foregroundColor(.gray)
 
+            // 第三行：处理阶段详情
+            if isProcessing {
+                if !stageLabel.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption2)
+                        Text(stageLabel)
+                            .font(.caption)
+                        if let detail = video.processingDetail.isEmpty ? nil : video.processingDetail {
+                            Text("·")
+                            Text(detail)
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                    }
+                    .foregroundColor(Color(hex: "1890FF"))
+                } else if video.processingDetail.isEmpty == false {
+                    HStack(spacing: 4) {
+                        Image(systemName: "ellipsis")
+                            .font(.caption2)
+                        Text(video.processingDetail)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.gray)
+                }
+            }
+
+            // 第四行：摘要
             Text(video.summary.isEmpty ? "暂无总结" : video.summary)
                 .font(.subheadline)
                 .foregroundColor(Color(hex: "646A73"))
                 .lineLimit(2)
 
+            // 第五行：日期 + 标签
             HStack {
                 Text(displayDate(video.processedAt ?? video.createdAt))
                     .font(.caption2)
@@ -309,6 +494,8 @@ struct VideoCard: View {
         return String(value.prefix(10))
     }
 }
+
+// MARK: - Supporting Views
 
 struct EmptyStateView: View {
     let title: String

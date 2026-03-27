@@ -15,6 +15,12 @@ struct VideoRecord: Identifiable, Codable, Equatable {
     let markdownContent: String
     let createdAt: String
     let processedAt: String?
+    // P3 新增字段
+    let isFavorited: Bool
+    let processingStage: String
+    let processingDetail: String
+    let estimatedSecondsRemaining: Int?
+    let lastStageUpdateAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -31,6 +37,11 @@ struct VideoRecord: Identifiable, Codable, Equatable {
         case markdownContent = "markdown_content"
         case createdAt = "created_at"
         case processedAt = "processed_at"
+        case isFavorited = "is_favorited"
+        case processingStage = "processing_stage"
+        case processingDetail = "processing_detail"
+        case estimatedSecondsRemaining = "estimated_seconds_remaining"
+        case lastStageUpdateAt = "last_stage_update_at"
     }
 
     var normalizedVideoType: String {
@@ -344,7 +355,13 @@ struct FeishuRecord: Codable, Equatable {
             status: stringField(named: "处理状态", fallback: AppConfig.Feishu.defaultSubmitStatus),
             markdownContent: stringField(named: "笔记路径"),
             createdAt: Self.iso8601(fromMilliseconds: createdTime) ?? "",
-            processedAt: timestampField(named: "处理时间")
+            processedAt: timestampField(named: "处理时间"),
+            // P3 字段：飞书兜底模式默认空值
+            isFavorited: false,
+            processingStage: "",
+            processingDetail: "",
+            estimatedSecondsRemaining: nil,
+            lastStageUpdateAt: nil
         )
     }
 
@@ -426,5 +443,103 @@ struct FeishuRecord: Codable, Equatable {
 private extension String {
     var nonEmpty: String? {
         isEmpty ? nil : self
+    }
+}
+
+// MARK: - P3 新增模型
+
+struct FavoriteResponse: Codable, Equatable {
+    let id: String
+    let isFavorited: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case isFavorited = "is_favorited"
+    }
+}
+
+struct VideoStatusResponse: Codable, Equatable {
+    let id: String
+    let status: String
+    let processingStage: String
+    let processingDetail: String
+    let estimatedSecondsRemaining: Int?
+    let lastStageUpdateAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case status
+        case processingStage = "processing_stage"
+        case processingDetail = "processing_detail"
+        case estimatedSecondsRemaining = "estimated_seconds_remaining"
+        case lastStageUpdateAt = "last_stage_update_at"
+    }
+}
+
+struct ShortcutKeySummary: Codable, Equatable, Identifiable {
+    let id: Int
+    let keyPrefix: String
+    let name: String
+    let isActive: Bool
+    let createdAt: String
+    let lastUsedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case keyPrefix = "key_prefix"
+        case name
+        case isActive = "is_active"
+        case createdAt = "created_at"
+        case lastUsedAt = "last_used_at"
+    }
+}
+
+struct CreateShortcutKeyResponse: Codable, Equatable {
+    let id: Int
+    let key: String
+    let keyPrefix: String
+    let name: String
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case key
+        case keyPrefix = "key_prefix"
+        case name
+        case createdAt = "created_at"
+    }
+}
+
+struct ShortcutSubmitResponse: Codable, Equatable {
+    let success: Bool
+    let recordId: String?
+    let status: String
+    let estimatedTime: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case recordId = "record_id"
+        case status
+        case estimatedTime = "estimated_time"
+        case message
+    }
+}
+
+// MARK: - 处理阶段标签
+
+enum ProcessingStageLabel {
+    private static let labels: [String: String] = [
+        "queued": "排队中",
+        "downloading": "下载视频",
+        "transcribing": "语音转写",
+        "ai_polishing": "AI 润色",
+        "syncing": "同步结果",
+        "completed": "已完成",
+        "failed": "失败",
+    ]
+
+    static func label(for stage: String) -> String {
+        labels[stage] ?? stage
     }
 }
