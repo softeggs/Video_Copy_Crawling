@@ -36,8 +36,9 @@
 
 ## 下一步任务
 
-- 后端能力已全部落地，等待 Web 接入验证
-- 如流水线侧需要接 `update_processing_stage`，再单独跟进
+- Web 接入中（进行中）
+- iOS 接入待跟进
+- 流水线侧接入 `update_processing_stage` 需单独跟进
 
 ## 最后更新
 
