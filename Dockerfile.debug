@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
+WORKDIR /app
+
+COPY requirements.debug.txt /tmp/requirements.debug.txt
+
+RUN python -m pip install --index-url ${PIP_INDEX_URL} --trusted-host ${PIP_TRUSTED_HOST} -r /tmp/requirements.debug.txt
+
+COPY app.py /app/app.py
+COPY backend /app/backend
+COPY core/db_scheduler.py /app/core/db_scheduler.py
+COPY core/__init__.py /app/core/__init__.py
+COPY utils /app/utils
+COPY scripts /app/scripts
+
+CMD ["streamlit", "run", "app.py", "--server.port", "8502", "--server.address", "0.0.0.0"]

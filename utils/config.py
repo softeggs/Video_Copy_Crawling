@@ -31,6 +31,10 @@ class Config:
     KIMI_API_KEY: str | None = os.getenv("KIMI_API_KEY")
     KIMI_BASE_URL: str = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
 
+    DEEPSEEK_API_KEY: str | None = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.4")
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://code.rayinai.com/v1")

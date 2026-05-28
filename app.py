@@ -14,7 +14,6 @@ from backend.constants import COMPLETED_STATUS, FAILED_STATUS, PENDING_STATUS, P
 from backend.database import DATABASE_URL, SessionLocal
 from backend.models import User, Video
 from core.db_scheduler import DatabaseScheduler, DatabaseWritebackAdapter
-from core.pipeline import ProcessingPipeline
 from utils.config import config
 
 st.set_page_config(page_title="内部调试台", page_icon="🛠️", layout="wide")
@@ -226,6 +225,8 @@ def get_video_detail(video_id: int) -> dict[str, Any] | None:
 async def _pipeline_processor(url: str) -> dict[str, Any]:
     """复用现有流水线处理数据库中的任务。"""
 
+    from core.pipeline import ProcessingPipeline
+
     pipeline = ProcessingPipeline(
         ai_provider=config.AI_PROVIDER,
         enable_ai_polish=config.ENABLE_AI_POLISH,
@@ -235,6 +236,8 @@ async def _pipeline_processor(url: str) -> dict[str, Any]:
 
 
 def run_scheduler_once(batch_size: int) -> dict[str, int]:
+    # 调试台默认只依赖数据库与后端查询；真正触发流水线时再按需导入重依赖，
+    # 这样可以把日常运维镜像与 AI/Whisper/下载栈解耦。
     adapter = DatabaseWritebackAdapter(session_factory=SessionLocal)
     scheduler = DatabaseScheduler(
         adapter=adapter,

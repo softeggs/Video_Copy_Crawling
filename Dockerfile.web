@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
+WORKDIR /app
+
+COPY requirements.web-console.txt /tmp/requirements.web-console.txt
+
+RUN python -m pip install --index-url ${PIP_INDEX_URL} --trusted-host ${PIP_TRUSTED_HOST} -r /tmp/requirements.web-console.txt
+
+COPY web /app/web
+COPY utils /app/utils
+COPY web_main.py /app/web_main.py
+COPY scripts /app/scripts
+
+CMD ["streamlit", "run", "web_main.py", "--server.port", "8501", "--server.address", "0.0.0.0"]

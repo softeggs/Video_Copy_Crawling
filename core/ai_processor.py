@@ -50,13 +50,18 @@ class AIProcessor:
     def _has_kimi_provider() -> bool:
         return bool(config.KIMI_API_KEY)
 
+    @staticmethod
+    def _has_deepseek_provider() -> bool:
+        return bool(config.DEEPSEEK_API_KEY and config.DEEPSEEK_MODEL and config.DEEPSEEK_BASE_URL)
+
     def _resolve_provider(self, requested_provider: Optional[str]) -> str:
         provider = (requested_provider or config.AI_PROVIDER or "").strip().lower()
-        provider_order = ["openai", "gemini", "kimi"]
+        provider_order = ["openai", "gemini", "kimi", "deepseek"]
         availability = {
             "openai": self._has_openai_provider(),
             "gemini": self._has_gemini_provider(),
             "kimi": self._has_kimi_provider(),
+            "deepseek": self._has_deepseek_provider(),
         }
 
         if provider in availability and availability[provider]:
@@ -87,6 +92,10 @@ class AIProcessor:
             if self.provider == "kimi":
                 logger.info("Using Kimi (Moonshot AI) API")
                 self.llm = None
+            elif self.provider == "deepseek":
+                logger.info("Using DeepSeek API")
+                self.llm = None
+                self.current_model = config.DEEPSEEK_MODEL
             elif self.provider == "gemini":
                 logger.info("Using Google Gemini API")
                 self.llm = ChatGoogleGenerativeAI(
@@ -136,6 +145,17 @@ class AIProcessor:
             model=model,
             api_key=config.KIMI_API_KEY,
             base_url=config.KIMI_BASE_URL,
+            temperature=0.3,
+            streaming=False,
+        )
+
+    def _create_deepseek_llm(self) -> ChatOpenAI:
+        """创建 DeepSeek 的 LangChain LLM 实例。"""
+
+        return ChatOpenAI(
+            model=config.DEEPSEEK_MODEL,
+            api_key=config.DEEPSEEK_API_KEY,
+            base_url=config.DEEPSEEK_BASE_URL,
             temperature=0.3,
             streaming=False,
         )
@@ -226,6 +246,9 @@ class AIProcessor:
             model = self._get_kimi_model_for_text(len(raw_text))
             self.current_model = model
             llm = self._create_kimi_llm(model)
+        elif self.provider == "deepseek":
+            self.current_model = config.DEEPSEEK_MODEL
+            llm = self._create_deepseek_llm()
         else:
             llm = self.llm
 
@@ -283,7 +306,13 @@ Return JSON only.""",
         tags = list(base_tags or [])
 
         if ai_polish_succeeded:
-            model_name = self.current_model or config.OPENAI_MODEL or config.GEMINI_MODEL or self.KIMI_MODEL_SHORT
+            model_name = (
+                self.current_model
+                or config.DEEPSEEK_MODEL
+                or config.OPENAI_MODEL
+                or config.GEMINI_MODEL
+                or self.KIMI_MODEL_SHORT
+            )
             tags.append(f"{self.AI_MODEL_TAG_PREFIX}{model_name}")
         else:
             tags.append(self.AI_POLISH_FAILED_TAG)

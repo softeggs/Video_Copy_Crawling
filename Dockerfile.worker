@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.worker.txt /tmp/requirements.worker.txt
+
+RUN python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1+cpu \
+    && python -m pip install --no-deps openai-whisper==20250625 \
+    && python -m pip install --index-url ${PIP_INDEX_URL} --trusted-host ${PIP_TRUSTED_HOST} -r /tmp/requirements.worker.txt
+
+COPY . /app
+
+CMD ["python", "-m", "scripts.run_db_scheduler"]

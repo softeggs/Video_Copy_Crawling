@@ -21,12 +21,21 @@
 - P3 新增快捷指令密钥接口（生成/列表/吊销/快捷提交）
 - P3 Alembic 新增迁移脚本
 - `db_scheduler` 认领/成功/失败时写入 `processing_stage`
+- P7 第一阶段新增数据库调度常驻入口 `scripts/run_db_scheduler.py`
+- P7 第一阶段补齐 `Dockerfile`、`docker-compose.yml`、Nginx 配置和部署环境模板
+- P7 第一阶段补齐本地部署演练文档 `docs/P7_LOCAL_DEPLOYMENT.md`
+- P7 第一阶段完成基础 Docker 联调，确认后端健康检查可用
+- P7 第一阶段确认数据库调度器可认领任务并写回失败状态
+- P7 第一阶段完成 DeepSeek provider 接入
+- P7 第一阶段完成抖音真实链接“下载 -> 转写 -> AI 润色 -> 飞书写回”闭环验证
 
 ## 未完成
 
 - 为调度流程写入详细阶段和预计时间（流水线侧尚未接入）
-- 补充服务器迁移说明
+- 验证本地 Docker 化演练闭环
 - 后续接入 PostgreSQL 运行验证
+- 第二阶段接入真实云主机参数
+- 收敛 Docker 镜像体积与部署依赖
 
 ## 当前难点
 
@@ -36,9 +45,10 @@
 
 ## 下一步任务
 
-- Web 接入中（进行中）
-- iOS 接入待跟进
+- 执行 `docker compose config` 与镜像构建验证
+- 验证 `backend-api`、`db-scheduler`、`web-console`、`debug-console` 容器联调
 - 流水线侧接入 `update_processing_stage` 需单独跟进
+- 继续优化部署产物与运行时资源占用
 
 ## 最后更新
 

@@ -1,5 +1,8 @@
 # 环境变量
 # .env
+.env.deploy
+.env.staging
+.env.production
 # 调试文件
 *.log
 

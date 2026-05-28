@@ -37,8 +37,10 @@ pip install -r requirements.txt
 OPENAI_API_KEY=your_openai_key
 # 或
 GEMINI_API_KEY=your_gemini_key
+# 或
+DEEPSEEK_API_KEY=your_deepseek_key
 
-AI_PROVIDER=openai  # 或 gemini
+AI_PROVIDER=openai  # 或 gemini / deepseek
 ENABLE_AI_POLISH=true  # 或 false（仅语音识别）
 
 # 可选：飞书配置
@@ -54,6 +56,22 @@ FEISHU_BITABLE_TABLE_ID=your_table_id
 ```bash
 streamlit run app.py
 ```
+
+## P7 本地部署演练
+
+统一后端的第一阶段部署资产已经补齐，适用于本地 Docker 化演练，不涉及真实云主机发布。
+
+- 部署说明：`docs/P7_LOCAL_DEPLOYMENT.md`
+- 编排入口：`docker-compose.yml`
+- 运行配置模板：`.env.deploy.example`
+
+本阶段默认包含：
+
+- `backend-api`
+- `db-scheduler`
+- `web_main.py` 正式用户入口
+- `app.py` 内部调试台
+- `nginx` 本地反向代理
 
 ## iOS 快捷指令 ⭐ 新功能
 
