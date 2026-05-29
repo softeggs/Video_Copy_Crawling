@@ -26,6 +26,15 @@ struct iOS_Video_IntelligenceTests {
         }
     }
 
+    @Test func localMockAuthServiceReturnsCurrentUserForValidToken() async throws {
+        let service = LocalMockAuthService()
+
+        let user = try await service.fetchCurrentUser(token: "local_mock_test_token")
+
+        #expect(user.username == "test")
+        #expect(user.tableId == LocalMockAuthService.tableID)
+    }
+
     @Test func authManagerPersistsRestoresAndClearsSession() async throws {
         let suiteName = "AuthManagerTests-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -45,40 +54,93 @@ struct iOS_Video_IntelligenceTests {
 
         let manager = AuthManager(
             authService: StubAuthService(
-                response: LoginResponse(
+                loginResponse: LoginResponse(
                     token: "backend_token",
                     user: backendUser
-                )
+                ),
+                currentUserResult: .success(backendUser)
             ),
             userDefaults: defaults
         )
         #expect(manager.isAuthenticated == false)
+        #expect(manager.isRestoringSession == false)
 
         try await manager.login(username: "api_user", password: "secret")
 
         #expect(manager.isAuthenticated == true)
+        #expect(manager.isRestoringSession == false)
         #expect(manager.currentUser?.tableId == "")
         #expect(manager.currentUser?.displayName == "API User")
         #expect(manager.token == "backend_token")
 
         let restoredManager = AuthManager(
             authService: StubAuthService(
-                response: LoginResponse(
+                loginResponse: LoginResponse(
                     token: "backend_token",
                     user: backendUser
+                ),
+                currentUserResult: .success(
+                    User(
+                        userId: "1",
+                        username: "api_user",
+                        displayName: "Updated API User",
+                        tableId: "tbl_from_backend"
+                    )
                 )
             ),
             userDefaults: defaults
         )
+        #expect(restoredManager.isRestoringSession == true)
+        await waitForCondition { restoredManager.isRestoringSession == false }
+
         #expect(restoredManager.isAuthenticated == true)
         #expect(restoredManager.currentUser?.username == "api_user")
-        #expect(restoredManager.currentUser?.displayName == "API User")
+        #expect(restoredManager.currentUser?.displayName == "Updated API User")
+        #expect(restoredManager.currentUser?.tableId == "tbl_from_backend")
 
         restoredManager.logout()
 
         #expect(restoredManager.isAuthenticated == false)
+        #expect(restoredManager.isRestoringSession == false)
         #expect(restoredManager.currentUser == nil)
         #expect(restoredManager.token == nil)
+        #expect(defaults.string(forKey: "authToken") == nil)
+        #expect(defaults.data(forKey: "currentUser") == nil)
+    }
+
+    @Test func authManagerClearsPersistedSessionWhenCurrentUserFetchFails() async throws {
+        let suiteName = "AuthManagerUnauthorized-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("Failed to create isolated UserDefaults suite.")
+            return
+        }
+
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let storedUser = User(
+            userId: "1",
+            username: "api_user",
+            displayName: "API User",
+            tableId: ""
+        )
+        defaults.set("expired_token", forKey: "authToken")
+        defaults.set(try JSONEncoder().encode(storedUser), forKey: "currentUser")
+
+        let manager = AuthManager(
+            authService: StubAuthService(
+                loginResponse: LoginResponse(token: "unused", user: storedUser),
+                currentUserResult: .failure(AppServiceError.unauthorized)
+            ),
+            userDefaults: defaults
+        )
+
+        #expect(manager.isRestoringSession == true)
+        await waitForCondition { manager.isRestoringSession == false }
+
+        #expect(manager.isAuthenticated == false)
+        #expect(manager.currentUser == nil)
+        #expect(manager.token == nil)
         #expect(defaults.string(forKey: "authToken") == nil)
         #expect(defaults.data(forKey: "currentUser") == nil)
     }
@@ -216,6 +278,30 @@ struct iOS_Video_IntelligenceTests {
         #expect(response.user.displayName == "API User")
     }
 
+    @Test func apiServiceFetchCurrentUserUsesBearerToken() async throws {
+        let session = makeSession(
+            statusCode: 200,
+            body: """
+            {
+              "user_id": "1",
+              "username": "api_user",
+              "display_name": "API User",
+              "table_id": "tbl_123"
+            }
+            """
+        ) { request in
+            #expect(request.url?.absoluteString == "http://192.168.0.32:8002/auth/me")
+            #expect(request.httpMethod == "GET")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer backend_token")
+        }
+
+        let service = APIService(session: session, baseURL: "http://192.168.0.32:8002")
+        let user = try await service.fetchCurrentUser(token: "backend_token")
+
+        #expect(user.username == "api_user")
+        #expect(user.tableId == "tbl_123")
+    }
+
     @Test func backendAuthServiceMapsUnauthorizedToInvalidCredentials() async {
         let session = makeSession(statusCode: 401, body: #"{"detail":"Invalid username or password"}"#)
         let service = BackendAuthService(
@@ -297,10 +383,15 @@ struct iOS_Video_IntelligenceTests {
 }
 
 private struct StubAuthService: AuthServiceProtocol {
-    let response: LoginResponse
+    let loginResponse: LoginResponse
+    let currentUserResult: Result<User, Error>
 
     func login(username _: String, password _: String) async throws -> LoginResponse {
-        response
+        loginResponse
+    }
+
+    func fetchCurrentUser(token _: String) async throws -> User {
+        try currentUserResult.get()
     }
 }
 
@@ -353,4 +444,16 @@ private func makeSession(
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockURLProtocol.self]
     return URLSession(configuration: configuration)
+}
+
+private func waitForCondition(
+    timeoutNanoseconds: UInt64 = 1_000_000_000,
+    pollIntervalNanoseconds: UInt64 = 20_000_000,
+    condition: @escaping @Sendable () -> Bool
+) async {
+    let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+
+    while !condition() && DispatchTime.now().uptimeNanoseconds < deadline {
+        try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+    }
 }

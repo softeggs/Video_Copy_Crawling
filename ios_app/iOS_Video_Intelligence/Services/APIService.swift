@@ -127,6 +127,10 @@ final class APIService {
         try await request(path: "/auth/login", method: "POST", body: loginRequest)
     }
 
+    func fetchCurrentUser(token: String) async throws -> User {
+        try await request(path: "/auth/me", method: "GET", token: token)
+    }
+
     func submitVideo(videoUrl: String, token: String) async throws -> VideoSubmitResponse {
         try await request(
             path: "/videos/submit",
@@ -241,6 +245,7 @@ final class APIService {
     private func request<Response: Decodable>(
         path: String,
         method: String,
+        authenticated: Bool = true,
         token: String? = nil,
         queryItems: [URLQueryItem] = [],
         body: Encodable? = nil
@@ -280,7 +285,7 @@ final class APIService {
         }
 
         guard (200 ... 299).contains(httpResponse.statusCode) else {
-            throw error(for: httpResponse.statusCode, data: data)
+            throw error(for: httpResponse.statusCode, data: data, authenticated: authenticated)
         }
 
         do {
@@ -305,8 +310,11 @@ final class APIService {
         return components?.url
     }
 
-    private func error(for statusCode: Int, data: Data) -> APIError {
+    private func error(for statusCode: Int, data: Data, authenticated: Bool) -> APIError {
         if statusCode == 401 {
+            if authenticated {
+                NotificationCenter.default.post(name: .authSessionExpired, object: nil)
+            }
             return .unauthorized
         }
 

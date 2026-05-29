@@ -179,10 +179,13 @@ struct SubmitView: View {
                         errorMessage = response.message ?? "提交失败"
                     }
                 }
-            } catch {
-                await MainActor.run {
-                    isSubmitting = false
-                    errorMessage = error.localizedDescription
+        } catch {
+            if await authManager.handleSessionExpirationIfNeeded(error) {
+                return
+            }
+            await MainActor.run {
+                isSubmitting = false
+                errorMessage = error.localizedDescription
                 }
             }
         }
@@ -209,6 +212,9 @@ struct SubmitView: View {
                 isLoadingStats = false
             }
         } catch {
+            if await authManager.handleSessionExpirationIfNeeded(error) {
+                return
+            }
             await MainActor.run {
                 typeStats = []
                 isLoadingStats = false

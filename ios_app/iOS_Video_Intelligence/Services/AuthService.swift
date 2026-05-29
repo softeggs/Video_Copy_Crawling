@@ -65,6 +65,7 @@ func mapAppServiceError(_ error: Error, treatUnauthorizedAsInvalidCredentials: B
 
 protocol AuthServiceProtocol {
     func login(username: String, password: String) async throws -> LoginResponse
+    func fetchCurrentUser(token: String) async throws -> User
 }
 
 final class BackendAuthService: AuthServiceProtocol {
@@ -79,6 +80,14 @@ final class BackendAuthService: AuthServiceProtocol {
             return try await apiService.login(request: LoginRequest(username: username, password: password))
         } catch {
             throw mapAppServiceError(error, treatUnauthorizedAsInvalidCredentials: true)
+        }
+    }
+
+    func fetchCurrentUser(token: String) async throws -> User {
+        do {
+            return try await apiService.fetchCurrentUser(token: token)
+        } catch {
+            throw mapAppServiceError(error)
         }
     }
 }
@@ -101,5 +110,18 @@ final class LocalMockAuthService: AuthServiceProtocol {
         )
 
         return LoginResponse(token: "local_mock_\(username)_token", user: user)
+    }
+
+    func fetchCurrentUser(token: String) async throws -> User {
+        guard token == "local_mock_\(Self.validUsername)_token" else {
+            throw AppServiceError.unauthorized
+        }
+
+        return User(
+            userId: "local-test-user",
+            username: Self.validUsername,
+            displayName: "娴嬭瘯璐﹀彿",
+            tableId: Self.tableID
+        )
     }
 }

@@ -5,6 +5,7 @@ class AuthManager: ObservableObject {
     static let shared = AuthManager()
 
     @Published var isAuthenticated = false
+    @Published var isRestoringSession = true
     @Published var currentUser: User?
     @Published var token: String?
 
@@ -12,6 +13,7 @@ class AuthManager: ObservableObject {
     private let userKey = "currentUser"
     private let authService: AuthServiceProtocol
     private let userDefaults: UserDefaults
+    private var sessionExpiredObserver: NSObjectProtocol?
 
     init(
         authService: AuthServiceProtocol = AppServices.authService,
@@ -19,7 +21,20 @@ class AuthManager: ObservableObject {
     ) {
         self.authService = authService
         self.userDefaults = userDefaults
+        sessionExpiredObserver = NotificationCenter.default.addObserver(
+            forName: .authSessionExpired,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyLoggedOutState(clearPersistedSession: true)
+        }
         restoreSession()
+    }
+
+    deinit {
+        if let sessionExpiredObserver {
+            NotificationCenter.default.removeObserver(sessionExpiredObserver)
+        }
     }
 
     func login(username: String, password: String) async throws {
@@ -29,16 +44,24 @@ class AuthManager: ObservableObject {
             token = response.token
             currentUser = response.user
             isAuthenticated = true
+            isRestoringSession = false
             persistSession(token: response.token, user: response.user)
         }
     }
 
     func logout() {
-        isAuthenticated = false
-        token = nil
-        currentUser = nil
-        userDefaults.removeObject(forKey: tokenKey)
-        userDefaults.removeObject(forKey: userKey)
+        applyLoggedOutState(clearPersistedSession: true)
+    }
+
+    func handleSessionExpirationIfNeeded(_ error: Error) async -> Bool {
+        guard case AppServiceError.unauthorized = error as? AppServiceError else {
+            return false
+        }
+
+        await MainActor.run {
+            applyLoggedOutState(clearPersistedSession: true)
+        }
+        return true
     }
 
     private func restoreSession() {
@@ -47,13 +70,46 @@ class AuthManager: ObservableObject {
             let userData = userDefaults.data(forKey: userKey),
             let storedUser = try? JSONDecoder().decode(User.self, from: userData)
         else {
-            logout()
+            applyLoggedOutState(clearPersistedSession: true)
             return
         }
 
         token = storedToken
         currentUser = storedUser
-        isAuthenticated = true
+        isAuthenticated = false
+        isRestoringSession = true
+
+        Task {
+            await validateRestoredSession(token: storedToken)
+        }
+    }
+
+    @MainActor
+    private func validateRestoredSession(token: String) async {
+        do {
+            let user = try await authService.fetchCurrentUser(token: token)
+            self.token = token
+            currentUser = user
+            isAuthenticated = true
+            isRestoringSession = false
+            persistSession(token: token, user: user)
+        } catch {
+            applyLoggedOutState(clearPersistedSession: true)
+        }
+    }
+
+    private func applyLoggedOutState(clearPersistedSession: Bool) {
+        isAuthenticated = false
+        isRestoringSession = false
+        token = nil
+        currentUser = nil
+
+        guard clearPersistedSession else {
+            return
+        }
+
+        userDefaults.removeObject(forKey: tokenKey)
+        userDefaults.removeObject(forKey: userKey)
     }
 
     private func persistSession(token: String, user: User) {
@@ -62,4 +118,8 @@ class AuthManager: ObservableObject {
             userDefaults.set(userData, forKey: userKey)
         }
     }
+}
+
+extension Notification.Name {
+    static let authSessionExpired = Notification.Name("AuthSessionExpired")
 }

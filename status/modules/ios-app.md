@@ -2,56 +2,42 @@
 
 ## 模块定位
 
-移动端用户入口，通过统一后端 8002 提供完整视频记录管理能力。
+iOS 客户端面向移动端使用场景，负责登录、提交视频链接、查看历史记录、浏览详情、查看概览，以及快捷指令相关入口。
 
 ## 当前状态
 
-已运行
+进行中
 
 ## 已完成
 
-- P2：最小联调完成（登录、提交、列表、详情、统计、概览接入统一后端）
-- **P5**：产品能力补齐全部完成
-  - `VideoRecord` 新增 `isFavorited`、`processingStage`、`processingDetail`、`estimatedSecondsRemaining`、`lastStageUpdateAt` 字段
-  - `APIService` 新增 `deleteVideo`、`toggleFavorite`、`fetchVideoStatus` 接口
-  - `APIService` 新增 `listShortcutKeys`、`createShortcutKey`、`revokeShortcutKey`、`shortcutSubmit` 接口
-  - `VideoRepositoryProtocol` 新增全部 P3 方法声明
-  - `BackendVideoRepository` 实现全部 P3 方法
-  - `FeishuVideoRepository` 添加 P3 stubs，抛 `notSupported` 明确错误
-  - `AuthServiceError` 新增 `notSupported` case
-  - `HistoryView` 左滑删除（乐观更新 + 失败回滚）、星标收藏（乐观更新）、处理中状态（阶段标签 + 进度指示器）
-  - `ProfileView` 新增"快捷指令密钥"入口
-  - `ShortcutKeysView` 密钥列表、生成、复制、吊销完整实现
+- 统一后端模式已落地，默认基址为 `http://192.168.0.32:8002`
+- 登录、提交、历史列表、详情、概览链路已切到统一后端
+- 删除、收藏、处理中状态查询能力已接入
+- 快捷指令密钥列表、创建、吊销与免登录提交接口已接入
+- 启动恢复已增加 `/auth/me` 严格会话校验
+- 会话失效时会立即清理本地 token 与用户缓存
+- 启动页已增加恢复中状态，避免主界面闪现
+- 单元测试已覆盖登录、DTO 解码、错误映射、`/auth/me`、会话恢复成功/失败
 
 ## 未完成
 
-- 真机局域网联调验证（待进入 P6）
-- `/auth/me` 会话校验（启动时自动校验 token）
+- 真机/模拟器局域网联调收尾
+- 联调记录沉淀到状态文档或交接文档
+- 如联调暴露 DTO、错误文案或空态问题，再做最小修补
 
-## 技术细节
+## 当前默认策略
 
-### P3 字段说明
+- `AppConfig.useFeishuDirect = false`
+- 本地存在会话时，启动优先调用 `GET /auth/me`
+- `/auth/me` 返回 `401/403` 或用户拉取失败时立即登出
+- 本轮不保留离线弱登录态
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `isFavorited` | Bool | 是否收藏 |
-| `processingStage` | String | 当前处理阶段 key（如 `queued`, `downloading`） |
-| `processingDetail` | String | 阶段具体描述 |
-| `estimatedSecondsRemaining` | Int? | 预计剩余秒数 |
-| `lastStageUpdateAt` | String? | 阶段更新时间 |
+## 下一步
 
-### 乐观更新策略
-
-- **删除**：立即从列表移除，失败则恢复
-- **收藏**：立即更新状态，失败则恢复
-- 两者均通过 `withAnimation` 驱动 UI 平滑过渡
-
-## 下一步任务
-
-- P6：真机联调验证
-- P6：越权/伪造密钥安全验证
-- P7：服务器迁移
+- 在局域网环境完成一次完整联调
+- 核对请求路径，确认不再使用 `127.0.0.1` 与旧 `/api/...`
+- 收敛联调中发现的小问题，不扩展新功能范围
 
 ## 最后更新
 
-2026-03-27
+2026-05-29

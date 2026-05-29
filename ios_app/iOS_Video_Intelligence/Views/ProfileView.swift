@@ -188,6 +188,9 @@ struct ProfileView: View {
                 isLoadingOverview = false
             }
         } catch {
+            if await authManager.handleSessionExpirationIfNeeded(error) {
+                return
+            }
             await MainActor.run {
                 overview = VideoOverviewResponse(total: 0, today: 0, pending: 0)
                 isLoadingOverview = false
@@ -427,6 +430,9 @@ struct ShortcutKeysView: View {
                 isLoading = false
             }
         } catch {
+            if await authManager.handleSessionExpirationIfNeeded(error) {
+                return
+            }
             await MainActor.run {
                 errorMessage = error.localizedDescription
                 isLoading = false

@@ -161,6 +161,9 @@ struct HistoryView: View {
                 isLoading = false
             }
         } catch {
+            if await authManager.handleSessionExpirationIfNeeded(error) {
+                return
+            }
             await MainActor.run {
                 errorMessage = error.localizedDescription
                 isLoading = false
