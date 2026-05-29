@@ -1,0 +1,33 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <inline-error message="{{errorMessage}}" />
+
+    <view class="toolbar-card">
+      <input class="input-card history-search-input" placeholder="搜索标题、作者、摘要、正文、标签" value="{{searchText}}" bindinput="onSearchInput" />
+      <view class="toolbar-row">
+        <picker mode="selector" range="{{sortOptions}}" value="{{sortIndex}}" bindchange="onSortChange">
+          <view><filter-chip title="{{sortOptions[sortIndex]}}" icon="⇅" /></view>
+        </picker>
+        <picker mode="selector" range="{{categories}}" value="{{categoryIndex}}" bindchange="onCategoryChange">
+          <view><filter-chip title="{{categoryValue}}" icon="☰" /></view>
+        </picker>
+        <view class="toolbar-count">共 {{displayedRecords.length}} 条</view>
+      </view>
+    </view>
+
+    <view wx:if="{{isLoading && !allRecords.length}}" class="card loading-card">正在加载记录...</view>
+
+    <empty-state wx:if="{{!isLoading && !displayedRecords.length}}" title="{{searchText ? '没有匹配结果' : '暂无记录'}}" subtitle="{{searchText ? '试试其他关键词或筛选条件。' : '下拉刷新以获取最新处理结果。'}}" />
+
+    <view wx:if="{{displayedRecords.length}}" class="page-stack">
+      <record-row
+        wx:for="{{displayedRecords}}"
+        wx:key="id"
+        record="{{item}}"
+        bind:open="openDetail"
+        bind:favorite="handleFavorite"
+        bind:more="handleMore"
+      />
+    </view>
+  </view>
+</view>

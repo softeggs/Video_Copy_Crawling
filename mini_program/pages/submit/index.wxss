@@ -1,0 +1,28 @@
+.submit-textarea {
+  width: 100%;
+  min-height: 180rpx;
+  box-sizing: border-box;
+}
+
+.submit-button-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.submit-half-button {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+.stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -8rpx;
+}
+
+.stats-grid type-stat-card {
+  width: 50%;
+  box-sizing: border-box;
+  padding: 0 8rpx 16rpx;
+}

@@ -1,0 +1,5 @@
+<view class="source-card">
+  <view class="source-title">视频原始链接</view>
+  <view class="source-url">{{url}}</view>
+  <button class="source-button" bindtap="handleCopy">复制链接</button>
+</view>

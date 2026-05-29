@@ -1,0 +1,49 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <inline-error message="{{errorMessage}}" />
+
+    <view wx:if="{{isLoading && !record}}" class="card">正在加载视频详情...</view>
+
+    <view wx:if="{{record}}" class="page-stack">
+      <view class="card page-stack">
+        <view class="title-lg">{{record.title || "未命名视频"}}</view>
+        <view class="meta-row">
+          <text>{{record.author || "未知作者"}}</text>
+          <text>{{record.normalizedVideoType}}</text>
+          <text>{{record.displayDate}}</text>
+        </view>
+      </view>
+
+      <view class="summary-card">
+        <view class="title-md summary-title">一句话总结</view>
+        <view class="summary-text">{{record.summary || "暂无总结"}}</view>
+      </view>
+
+      <source-link-card wx:if="{{record.url}}" url="{{record.url}}" />
+
+      <view wx:if="{{record.core_points.length}}" class="card page-stack">
+        <view class="title-md">核心观点</view>
+        <view wx:for="{{record.core_points}}" wx:key="index" class="point-row">
+          <text class="point-index">{{index + 1}}.</text>
+          <text class="point-text">{{item}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{record.golden_sentences.length}}" class="quote-card page-stack">
+        <view class="title-md">金句摘录</view>
+        <view wx:for="{{record.golden_sentences}}" wx:key="index" class="quote-row">{{item}}</view>
+      </view>
+
+      <view wx:if="{{record.corrected_text}}" class="card page-stack">
+        <view class="title-md">详细内容</view>
+        <view class="detail-text">{{record.corrected_text}}</view>
+      </view>
+
+      <view class="card action-row">
+        <button class="secondary-button" bindtap="handleCopySummary">复制总结</button>
+        <button class="secondary-button" bindtap="handleCopyLink">复制链接</button>
+        <button class="ghost-button" open-type="share">系统转发</button>
+      </view>
+    </view>
+  </view>
+</view>

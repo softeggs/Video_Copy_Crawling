@@ -1,0 +1,92 @@
+.profile-user-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.avatar {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #5e5ce6, #3370ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+}
+
+.profile-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.overview-grid {
+  display: flex;
+  gap: 12rpx;
+}
+
+.overview-item {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 20rpx;
+  background: #fafbff;
+}
+
+.overview-count {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.overview-count.warning {
+  color: #faad14;
+}
+
+.tool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.tool-title {
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tool-button-grid {
+  display: flex;
+  gap: 16rpx;
+}
+
+.tool-half-button {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+
+.tool-full-button,
+.settings-button,
+.logout-button {
+  width: 100%;
+  margin: 0;
+}
+
+.danger-button {
+  background: #fff1f0;
+  color: #f5222d;
+  border: none;
+  border-radius: 18rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx;
+  line-height: 1;
+}
+
+.logout-button {
+  font-size: 32rpx;
+  font-weight: 700;
+  padding: 26rpx 24rpx;
+  box-shadow: 0 10rpx 24rpx rgba(245, 34, 45, 0.08);
+}

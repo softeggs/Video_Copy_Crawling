@@ -1,0 +1,7 @@
+.inline-error {
+  color: #f5222d;
+  background: rgba(245, 34, 45, 0.08);
+  border-radius: 20rpx;
+  padding: 20rpx 24rpx;
+  font-size: 24rpx;
+}

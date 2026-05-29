@@ -1,0 +1,57 @@
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  color: #646a73;
+  font-size: 24rpx;
+}
+
+.summary-card {
+  background: rgba(94, 92, 230, 0.1);
+  border: 1rpx solid rgba(94, 92, 230, 0.25);
+  border-radius: 24rpx;
+  padding: 28rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.summary-title {
+  color: #5e5ce6;
+}
+
+.summary-text,
+.detail-text,
+.point-text,
+.quote-row {
+  line-height: 1.7;
+}
+
+.point-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.point-index {
+  color: #5e5ce6;
+  font-weight: 700;
+}
+
+.quote-card {
+  background: #fffbe6;
+  border-radius: 24rpx;
+  padding: 28rpx;
+}
+
+.quote-row {
+  padding-left: 20rpx;
+  border-left: 6rpx solid #faad14;
+  color: #646a73;
+  font-style: italic;
+}
+
+.action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}

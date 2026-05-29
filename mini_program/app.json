@@ -1,0 +1,50 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/register/index",
+    "pages/submit/index",
+    "pages/history/index",
+    "pages/detail/index",
+    "pages/profile/index",
+    "pages/shortcut-tutorial/index",
+    "pages/shortcut-keys/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "视频情报提取",
+    "navigationBarBackgroundColor": "#F7F8FA",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F8FA",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "color": "#646A73",
+    "selectedColor": "#5E5CE6",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/submit/index",
+        "text": "提交"
+      },
+      {
+        "pagePath": "pages/history/index",
+        "text": "记录"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "usingComponents": {
+    "inline-error": "/components/inline-error/index",
+    "empty-state": "/components/empty-state/index",
+    "filter-chip": "/components/filter-chip/index",
+    "type-stat-card": "/components/type-stat-card/index",
+    "record-row": "/components/record-row/index",
+    "source-link-card": "/components/source-link-card/index",
+    "shortcut-key-row": "/components/shortcut-key-row/index"
+  }
+}

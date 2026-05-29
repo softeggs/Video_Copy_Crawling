@@ -1,0 +1,32 @@
+.toolbar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.history-search-input {
+  display: block;
+  width: 100%;
+  min-height: 88rpx;
+  color: #1f2329;
+  font-size: 28rpx;
+  line-height: 44rpx;
+  box-sizing: border-box;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.toolbar-count {
+  margin-left: auto;
+  color: #646a73;
+  font-size: 24rpx;
+}
+
+.loading-card {
+  color: #646a73;
+}

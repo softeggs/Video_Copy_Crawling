@@ -1,0 +1,22 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <view class="card page-stack">
+      <view class="title-xl">快捷指令设置教程</view>
+      <view class="text-muted">严格对齐 iOS 工具区语义，小程序侧提供移动端说明与密钥入口。</view>
+    </view>
+
+    <view wx:for="{{steps}}" wx:key="title" class="card tutorial-step">
+      <view class="step-icon">{{item.icon}}</view>
+      <view class="step-content">
+        <view class="title-md">{{item.title}}</view>
+        <view class="text-muted">{{item.description}}</view>
+      </view>
+    </view>
+
+    <view class="card page-stack">
+      <view class="title-md">服务器接口</view>
+      <view class="endpoint">{{endpoint}}</view>
+      <button class="secondary-button" bindtap="copyEndpoint">复制接口地址</button>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,22 @@
+.empty-state {
+  padding: 48rpx 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  color: #646a73;
+}
+
+.empty-icon {
+  font-size: 72rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.empty-subtitle {
+  font-size: 24rpx;
+  text-align: center;
+}

@@ -1,0 +1,53 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <inline-error message="{{errorMessage}}" />
+
+    <view class="card profile-user-card">
+      <view class="avatar">👤</view>
+      <view class="profile-user-info">
+        <view class="title-md">{{user.display_name || "用户"}}</view>
+        <view class="text-muted text-caption">{{user.username || "未登录用户"}}</view>
+      </view>
+    </view>
+
+    <view class="card page-stack">
+      <view class="title-md">统计概览</view>
+      <view class="overview-grid">
+        <view class="overview-item">
+          <view class="overview-count">{{overview.total}}</view>
+          <view class="text-muted text-caption">累计</view>
+        </view>
+        <view class="overview-item">
+          <view class="overview-count">{{overview.today}}</view>
+          <view class="text-muted text-caption">今日</view>
+        </view>
+        <view class="overview-item">
+          <view class="overview-count warning">{{overview.pending}}</view>
+          <view class="text-muted text-caption">待处理</view>
+        </view>
+      </view>
+      <view wx:if="{{isLoadingOverview}}" class="text-muted text-caption">正在刷新概览...</view>
+    </view>
+
+    <view class="card page-stack">
+      <view class="title-md">高效工具</view>
+      <view class="tool-card">
+        <view class="tool-title">iOS 快捷指令（推荐）</view>
+        <view class="text-muted text-caption">添加到轻点背面后，可从任意 App 快速保存视频链接。</view>
+        <view class="tool-button-grid">
+          <button class="secondary-button tool-half-button" bindtap="copyShortcutInstallUrl">复制安装链接</button>
+          <button class="secondary-button tool-half-button" bindtap="openShortcutTutorial">查看设置教程</button>
+        </view>
+      </view>
+      <button class="ghost-button tool-full-button" bindtap="openShortcutKeys">快捷指令密钥管理</button>
+    </view>
+
+    <view class="card page-stack">
+      <view class="title-md">设置</view>
+      <button class="ghost-button settings-button" data-title="缓存管理" bindtap="showPlaceholder">缓存</button>
+      <button class="ghost-button settings-button" data-title="关于我们" bindtap="showPlaceholder">关于我们</button>
+    </view>
+
+    <button class="danger-button logout-button" bindtap="logout">退出登录</button>
+  </view>
+</view>

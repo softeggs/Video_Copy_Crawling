@@ -1,0 +1,52 @@
+<scroll-view class="login-scroll" scroll-y enable-flex>
+  <view class="page-shell login-page">
+    <view class="login-stack">
+      <view class="brand-block">
+        <view class="brand-icon">🎬</view>
+        <view class="brand-title">视频情报提取</view>
+        <view class="brand-subtitle">专业的视频内容情报提取工具</view>
+      </view>
+
+      <view class="card page-stack login-card">
+        <view class="field-block">
+          <view class="field-label">用户名</view>
+          <input
+            class="input-card login-input"
+            placeholder="请输入用户名"
+            value="{{username}}"
+            bindinput="onUsernameInput"
+            adjust-position="{{true}}"
+            cursor-spacing="220"
+            maxlength="-1"
+            confirm-type="next"
+          />
+        </view>
+
+        <view class="field-block">
+          <view class="field-label">密码</view>
+          <input
+            class="input-card login-input"
+            password
+            placeholder="请输入密码"
+            value="{{password}}"
+            bindinput="onPasswordInput"
+            adjust-position="{{true}}"
+            cursor-spacing="220"
+            maxlength="-1"
+            confirm-type="done"
+          />
+        </view>
+
+        <inline-error message="{{errorMessage}}" />
+
+        <button class="primary-button login-button" loading="{{isLoading}}" disabled="{{isLoading || !username || !password}}" bindtap="handleLogin">
+          登录
+        </button>
+
+        <button class="ghost-button login-button" bindtap="goRegister">没有账号？去注册</button>
+      </view>
+
+      <view class="login-footer">请使用后端已注册账号登录</view>
+    </view>
+  </view>
+</scroll-view>

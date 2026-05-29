@@ -1,0 +1,32 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <view class="section-header">
+      <view class="title-xl">新建提交</view>
+      <view class="text-muted">粘贴抖音、B 站或小红书视频链接</view>
+    </view>
+
+    <view class="card page-stack">
+      <textarea class="input-card submit-textarea" placeholder="请输入视频链接" value="{{url}}" bindinput="onUrlInput" auto-height />
+      <inline-error message="{{errorMessage}}" />
+      <view class="submit-button-row">
+        <button class="secondary-button submit-half-button" bindtap="pasteFromClipboard">从剪贴板粘贴</button>
+        <button class="primary-button submit-half-button" loading="{{isSubmitting}}" disabled="{{isSubmitting || !url}}" bindtap="handleSubmit">
+          提交视频
+        </button>
+      </view>
+    </view>
+
+    <view class="card page-stack">
+      <view class="row-between">
+        <view class="title-md">视频类型统计</view>
+        <view wx:if="{{isLoadingStats}}" class="text-muted text-caption">加载中...</view>
+      </view>
+
+      <empty-state wx:if="{{!isLoadingStats && !typeStats.length}}" title="暂无记录" subtitle="提交第一条视频后这里会显示统计。" />
+
+      <view wx:if="{{typeStats.length}}" class="stats-grid">
+        <type-stat-card wx:for="{{typeStats}}" wx:key="video_type" label="{{item.video_type}}" count="{{item.count}}" />
+      </view>
+    </view>
+  </view>
+</view>

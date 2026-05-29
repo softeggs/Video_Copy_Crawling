@@ -1,0 +1,39 @@
+<view class="record-card" bindtap="handleTap">
+  <view class="record-head">
+    <view class="record-title-wrap">
+      <text class="record-title">{{record.title || "未命名视频"}}</text>
+      <text wx:if="{{record.is_favorited}}" class="favorite-star">★</text>
+    </view>
+    <view class="record-status record-status-{{record.statusTone}}">{{record.status}}</view>
+  </view>
+
+  <view class="record-meta">
+    <text>{{record.author || "未知作者"}}</text>
+    <text>•</text>
+    <text>{{record.normalizedVideoType}}</text>
+  </view>
+
+  <view wx:if="{{record.isProcessing && record.stageLabel}}" class="record-stage">
+    {{record.stageLabel}}{{record.processing_detail ? (" · " + record.processing_detail) : ""}}
+  </view>
+
+  <view class="record-summary">{{record.summary || "暂无总结"}}</view>
+
+  <scroll-view wx:if="{{record.tags && record.tags.length}}" class="tag-scroll" scroll-x enable-flex>
+    <view class="tag-list">
+      <view wx:for="{{record.tags}}" wx:key="*this" wx:for-item="tag" wx:for-index="tagIndex">
+        <text wx:if="{{tagIndex < 3}}" class="record-tag">#{{tag}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="record-footer">
+    <text class="record-date">{{record.displayDate}}</text>
+    <view class="record-actions" catchtap="noop">
+      <button class="mini-action" size="mini" bindtap="handleFavoriteTap">
+        {{record.is_favorited ? "取消收藏" : "收藏"}}
+      </button>
+      <button class="mini-action" size="mini" bindtap="handleMoreTap">更多</button>
+    </view>
+  </view>
+</view>

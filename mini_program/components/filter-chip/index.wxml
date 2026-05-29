@@ -1,0 +1,4 @@
+<view class="chip">
+  <text wx:if="{{icon}}" class="chip-icon">{{icon}}</text>
+  <text class="chip-title">{{title}}</text>
+</view>

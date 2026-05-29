@@ -1,0 +1,139 @@
+page {
+  background: #f7f8fa;
+  color: #1f2329;
+  font-size: 28rpx;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  box-shadow: 0 10rpx 30rpx rgba(31, 35, 41, 0.06);
+  box-sizing: border-box;
+}
+
+.title-xl {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.title-lg {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.title-md {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.text-muted {
+  color: #646a73;
+}
+
+.text-caption {
+  font-size: 24rpx;
+}
+
+.primary-button {
+  background: linear-gradient(90deg, #5e5ce6, #3370ff);
+  color: #ffffff;
+  border: none;
+  border-radius: 18rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 24rpx;
+  line-height: 1;
+}
+
+.primary-button[disabled] {
+  background: linear-gradient(90deg, #9ca7f4, #79a3ff);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.secondary-button {
+  background: #eef2ff;
+  color: #4452d9;
+  border: 1rpx solid rgba(94, 92, 230, 0.14);
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  padding: 20rpx 24rpx;
+  line-height: 1;
+}
+
+.ghost-button {
+  background: transparent;
+  color: #4452d9;
+  border: 1rpx solid rgba(94, 92, 230, 0.2);
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding: 18rpx 24rpx;
+  line-height: 1;
+}
+
+.input-card {
+  display: block;
+  width: 100%;
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 22rpx 24rpx;
+  border: 1rpx solid rgba(100, 106, 115, 0.16);
+  box-sizing: border-box;
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tag {
+  display: inline-block;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.tag-primary {
+  background: rgba(94, 92, 230, 0.12);
+  color: #5e5ce6;
+}
+
+.tag-warning {
+  background: rgba(250, 173, 20, 0.12);
+  color: #faad14;
+}
+
+.tag-success {
+  background: rgba(82, 196, 26, 0.12);
+  color: #52c41a;
+}
+
+.tag-danger {
+  background: rgba(245, 34, 45, 0.12);
+  color: #f5222d;
+}

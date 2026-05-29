@@ -1,0 +1,29 @@
+.tutorial-step {
+  display: flex;
+  gap: 20rpx;
+  align-items: flex-start;
+}
+
+.step-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 999rpx;
+  background: #5e5ce6;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.step-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.endpoint {
+  word-break: break-all;
+  color: #3370ff;
+}

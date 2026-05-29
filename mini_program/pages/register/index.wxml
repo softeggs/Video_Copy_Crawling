@@ -1,0 +1,22 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <view class="section-header">
+      <view class="title-xl">创建账号</view>
+      <view class="text-muted text-caption">注册成功后会直接进入用户端。</view>
+    </view>
+
+    <view class="card page-stack">
+      <input class="input-card" data-field="username" placeholder="用户名" value="{{username}}" bindinput="onFieldInput" />
+      <input class="input-card" data-field="email" placeholder="邮箱" value="{{email}}" bindinput="onFieldInput" />
+      <input class="input-card" data-field="displayName" placeholder="显示名" value="{{displayName}}" bindinput="onFieldInput" />
+      <input class="input-card" data-field="password" password placeholder="密码（至少 6 位）" value="{{password}}" bindinput="onFieldInput" />
+
+      <inline-error message="{{errorMessage}}" />
+
+      <button class="primary-button" loading="{{isLoading}}" disabled="{{isLoading || !username || !email || !displayName || !password}}" bindtap="handleRegister">
+        注册并登录
+      </button>
+      <button class="ghost-button" bindtap="goBack">返回登录</button>
+    </view>
+  </view>
+</view>

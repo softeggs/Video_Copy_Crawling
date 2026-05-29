@@ -1,0 +1,10 @@
+<view class="key-card">
+  <view class="row">
+    <text class="key-name">{{item.name}}</text>
+    <text class="key-badge {{item.is_active ? 'active' : 'revoked'}}">{{item.is_active ? "有效" : "已吊销"}}</text>
+  </view>
+  <view class="key-meta">前缀：{{item.key_prefix}}****</view>
+  <view class="key-meta">创建：{{item.created_date}}</view>
+  <view class="key-meta">{{item.last_used_label}}</view>
+  <button wx:if="{{item.is_active}}" class="revoke-button" size="mini" bindtap="handleRevoke">吊销</button>
+</view>

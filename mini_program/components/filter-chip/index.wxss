@@ -1,0 +1,27 @@
+.chip {
+  display: inline-block;
+  box-sizing: border-box;
+}
+
+.chip,
+.chip-icon,
+.chip-title {
+  vertical-align: middle;
+}
+
+.chip {
+  align-items: center;
+  padding: 14rpx 18rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  color: #1f2329;
+  box-shadow: 0 6rpx 18rpx rgba(31, 35, 41, 0.05);
+}
+
+.chip-icon {
+  margin-right: 8rpx;
+}
+
+.chip-title {
+  font-size: 24rpx;
+}

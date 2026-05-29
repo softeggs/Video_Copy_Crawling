@@ -1,0 +1,32 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <inline-error message="{{errorMessage}}" />
+
+    <view class="card page-stack">
+      <view class="title-md">什么是快捷指令密钥？</view>
+      <view class="text-muted">快捷指令密钥是一种免登录提交方式。生成后可直接通过 API 提交视频链接，无需账号密码。</view>
+      <view class="warn-text">密钥只显示一次，请立即复制保存。服务端只保存哈希，无法找回明文。</view>
+    </view>
+
+    <view class="card page-stack">
+      <view class="title-md">生成密钥</view>
+      <input class="input-card" placeholder="密钥名称（可选）" value="{{newKeyName}}" bindinput="onNameInput" />
+      <button class="primary-button" loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="handleCreate">生成</button>
+    </view>
+
+    <view wx:if="{{createdKey}}" class="card page-stack">
+      <view class="title-md">新生成的密钥（仅显示一次）</view>
+      <view class="warn-text">请立即复制保存。</view>
+      <view class="created-key">{{createdKey.key}}</view>
+      <button class="secondary-button" bindtap="copyCreatedKey">复制密钥</button>
+      <view class="text-muted text-caption">密钥前缀：{{createdKey.key_prefix}}****</view>
+      <view class="text-muted text-caption">创建时间：{{createdKey.created_date}}</view>
+    </view>
+
+    <view class="page-stack">
+      <view class="title-md">已生成的密钥（{{keys.length}} 个）</view>
+      <empty-state wx:if="{{!keys.length && !isLoading}}" title="暂无密钥" subtitle="生成后可用于快捷指令直接提交视频链接。" />
+      <shortcut-key-row wx:for="{{keys}}" wx:key="id" item="{{item}}" bind:revoke="handleRevoke" />
+    </view>
+  </view>
+</view>
