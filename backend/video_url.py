@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urlparse
 
 from utils.url_cleaner import URLCleaner
 
 INVALID_VIDEO_URL_MESSAGE = "请输入有效的视频链接"
+URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"'`]+", re.IGNORECASE)
+TRAILING_NOISE_CHARS = ".,;!?)>]}\"'，。；！？】）"
+
+
+def _strip_embedded_noise(candidate: str) -> str:
+    """裁掉快捷指令分享文本里拼进 URL 的明显噪声尾巴。"""
+
+    cleaned_candidate = candidate.strip().rstrip(TRAILING_NOISE_CHARS)
+    lowered = cleaned_candidate.lower()
+    for marker in ("/mailto:", "mailto:"):
+        marker_index = lowered.find(marker)
+        if marker_index != -1:
+            suffix_start = marker_index + 1 if marker.startswith("/") else marker_index
+            return cleaned_candidate[:suffix_start].rstrip(TRAILING_NOISE_CHARS)
+    return cleaned_candidate
+
+
+def _extract_url_candidate(raw_url: str) -> str:
+    """从整段分享文案中提取首个 URL 候选。"""
+
+    stripped = raw_url.strip()
+    matched = URL_IN_TEXT_PATTERN.search(stripped)
+    if matched:
+        return _strip_embedded_noise(matched.group(0))
+    return _strip_embedded_noise(stripped)
 
 
 def normalize_video_url(raw_url: str) -> str:
@@ -17,7 +43,7 @@ def normalize_video_url(raw_url: str) -> str:
     if not isinstance(raw_url, str):
         raise ValueError(INVALID_VIDEO_URL_MESSAGE)
 
-    candidate = raw_url.strip()
+    candidate = _extract_url_candidate(raw_url)
     if not candidate:
         raise ValueError(INVALID_VIDEO_URL_MESSAGE)
 
